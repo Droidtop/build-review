@@ -12,7 +12,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 fetch() { # url sha256 out
-  curl -sSfL --retry 4 -o "$3" "$1"
+  curl -sSfL --retry 8 --retry-max-time 600 -o "$3" "$1"
   echo "$2  $3" | sha256sum -c --quiet -
 }
 
