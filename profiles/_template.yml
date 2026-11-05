@@ -11,16 +11,22 @@ purpose: >
 # (apk | plugin-bundle | engine-bundle | catalog | archive | native).
 artefacts:
   - {pattern: "*.apk", kind: apk}
-# How to rebuild a release from its commit (step 3 of the loop). setup is
-# one of: repo-android-setup (the repo's own .github/actions/android-setup),
-# java-android, python, rust, none. command runs at the repo root with no
-# secrets of any kind; outputs are globs of what it builds.
+# How to rebuild a release from its commit (step 2 of the loop), with no
+# secrets of any kind (scripts/rebuild.py). setup is one of:
+#   repo-android-setup  the repo's own .github/actions/android-setup, then `command`
+#   java-android, rust  a pinned toolchain, then `command`
+#   act                 the repo's own `job` of its own `workflow`, replayed by nektos/act
+# outputs maps a glob to the name the release published (or "{kind}" for the
+# original's one artefact of that kind), so the rebuild's findings sit at
+# the same paths as the original's. repack: payload turns an unsigned
+# payload tar (payload/ ...) into the bundle's layout.
 build:
   setup: java-android
   java: "17"
   submodules: false
   command: ./gradlew assembleRelease
-  outputs: ["app/build/outputs/apk/release/*.apk"]
+  outputs:
+    "app/build/outputs/apk/release/*.apk": app.apk
 # Android permissions the purpose needs.
 permissions: []
 # droidtop host-API permissions (plugin bundles' manifest.json).

@@ -1,0 +1,27 @@
+# What every Enginehost core shares (Enginehost docs/engine-bundle-format.md,
+# CLAUDE.md). A core's own profile `extends: _kinds/enginehost-core` and
+# adds its purpose, its API categories and anything its engine needs.
+artefacts:
+  - {pattern: "*.enginehost.tar.xz", kind: engine-bundle}
+build:
+  # The core's own `bundle` job, replayed at the release's commit: it pins
+  # its own toolchain and Enginehost's plugin-api commit. It builds and
+  # packs the unsigned payload; the signing workflow, which holds the key,
+  # is never replayed.
+  setup: act
+  workflow: .github/workflows/android.yml
+  job: bundle
+  outputs:
+    "**/unsigned.tar": "{engine-bundle}"
+  repack: payload
+permissions: []           # a core is not an APK; the host's permissions are Enginehost's
+plugin_permissions: []
+api:
+  native-load: "A core's native libraries load in Enginehost's runtime (engine-bundle-format.md)"
+  reflection: "Kotlin and Java internals"
+hosts:
+  game.enginehost.local: "Enginehost's virtual host for a game's own files (plugin-web)"
+  github.com: "The core's origin in its manifest"
+native_libs: []
+dynamic:
+  skip_reason: "A core runs inside Enginehost; installed alone it does nothing. Its behaviour is checked through Enginehost's conformance runs."

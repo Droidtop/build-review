@@ -231,9 +231,7 @@ jobs:
             echo "setup=$(python -m review profile "$REPO" --field build.setup)"
             echo "java=$(python -m review profile "$REPO" --field build.java)"
             echo "submodules=$(python -m review profile "$REPO" --field build.submodules)"
-            echo "outputs=$(python -m review profile "$REPO" --field build.outputs)"
           } >> "$GITHUB_OUTPUT"
-          python -m review profile "$REPO" --field build.command > "$RUNNER_TEMP/build-command"
       - name: Source at the commit
         if: steps.need.outputs.rebuild == 'true'
         id: src
@@ -247,7 +245,9 @@ jobs:
           token: ${{ github.token }}
           persist-credentials: false
       # Toolchains. The repo's own setup action is the one its build used at
-      # that commit, so an old release is rebuilt with its own toolchain.
+      # that commit, so an old release is rebuilt with its own toolchain. A
+      # profile with setup: act replays the repo's own build job instead,
+      # whose own steps set up its toolchain.
       - name: Repo's own Android setup
         if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'repo-android-setup'
         uses: ./src/.github/actions/android-setup
@@ -258,36 +258,16 @@ jobs:
       - name: Rust
         if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'rust'
         run: rustup show && rustup default stable
+      - name: act, for replaying the repo's own build job
+        if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'act'
+        run: bash harness/scripts/install-tools.sh --act-only "$RUNNER_TEMP/review-bin"
       - name: Build (no secrets)
         id: build
         if: steps.need.outputs.rebuild == 'true'
-        working-directory: src
-        # The env is emptied of anything signing-shaped on purpose: a rebuild
-        # is unsigned by construction (README, "Rebuilds").
-        env:
-          SIGNING_KEYSTORE_PATH: ""
-          SIGNING_STORE_PASSWORD: ""
-          SIGNING_KEY_ALIAS: ""
-          SIGNING_KEY_PASSWORD: ""
-          OUTPUTS: ${{ steps.profile.outputs.outputs }}
-        run: |
-          if [ "${{ steps.src.outcome }}" != success ]; then
-            echo "error=the source at ${{ needs.static.outputs.commit }} could not be checked out" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          if [ ! -s "$RUNNER_TEMP/build-command" ]; then
-            echo "error=the repo's profile gives no build command" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          if ! bash -e "$RUNNER_TEMP/build-command" > "$RUNNER_TEMP/build.log" 2>&1; then
-            tail -50 "$RUNNER_TEMP/build.log"
-            echo "error=the build failed at that commit (log in the run)" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          mkdir -p ../rebuilt
-          python3 -c 'import glob, json, os, shutil, sys
-          n = 0
-          for g in json.loads(os.environ["OUTPUTS"] or "[]"):
-              for p in glob.glob(g, recursive=True):
-                  shutil.copy(p, "../rebuilt/"); n += 1
-          sys.exit(0 if n else 1)' || echo "error=the build made none of the profile's outputs" >> "$GITHUB_OUTPUT"
+        # scripts/rebuild.py runs the build with every credential-shaped
+        # variable removed, so a rebuild is unsigned by construction (README,
+        # "Rebuilds"), and names the outputs as the release published them.
+        run: python harness/scripts/rebuild.py "$REPO" src out/original.json rebuilt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.need.outputs.rebuild == 'true' && steps.build.outputs.error == ''
         with:

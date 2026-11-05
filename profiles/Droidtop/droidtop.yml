@@ -21,8 +21,12 @@ build:
   submodules: recursive         # android-build.yml:72
   # No secrets: app/build.gradle.kts:98-145 signs with the debug key when
   # SIGNING_KEYSTORE_PATH is unset, so a rebuild needs no signing material.
-  command: ./gradlew :app:assembleRelease --stacktrace
-  outputs: ["app/build/outputs/apk/release/*.apk"]
+  # Both published APKs, under their published names
+  # (build-scripts/release_channel.py:102-103), so the two reviews compare.
+  command: ./gradlew :app:assembleRelease :app:assembleDebug --stacktrace
+  outputs:
+    "app/build/outputs/apk/release/app-universal-release*.apk": droidtop.apk
+    "app/build/outputs/apk/debug/app-universal-debug*.apk": droidtop-debug.apk
 
 permissions:
   android.permission.INTERNET: "Sources, stores, downloads, updates, plugins (SPEC 12a; app/, net-core manifests)"

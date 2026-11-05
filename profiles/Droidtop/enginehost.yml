@@ -21,8 +21,11 @@ build:
   submodules: recursive          # build.yml: checkout with submodules
   # No secrets: app/build.gradle.kts:32-55 only signs when ENGINEHOST_ANDROID_KEYSTORE
   # is set, so the rebuild's release APK comes out unsigned.
-  command: ./gradlew :app:assembleRelease --stacktrace
-  outputs: ["app/build/outputs/apk/release/*.apk"]
+  # Both published APKs, under their published names (build-scripts/release_channel.py:46-47).
+  command: ./gradlew :app:assembleRelease :app:assembleDebug --stacktrace
+  outputs:
+    "app/build/outputs/apk/release/app-release*.apk": enginehost-latest.apk
+    "app/build/outputs/apk/debug/app-debug*.apk": enginehost-latest-debug.apk
 
 permissions:
   android.permission.MANAGE_EXTERNAL_STORAGE: "Native interpreters operate on complete game directory trees in place (app manifest)"

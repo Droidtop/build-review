@@ -10,12 +10,13 @@ widen its own allowance. Anything a profile does not mention is unexpected.
 from __future__ import annotations
 
 import fnmatch
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parent.parent / "profiles"
+ROOT = Path(os.environ.get("BUILD_REVIEW_PROFILES") or Path(__file__).resolve().parent.parent / "profiles")
 
 
 @dataclass
