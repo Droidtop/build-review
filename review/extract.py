@@ -44,8 +44,10 @@ def kind_of(path: str | Path) -> str:
         return "catalog"
     if head == b"\x7fELF":
         return "elf"
-    if head == b"\x28\xb5\x2f\xfd":
-        return "archive"   # zstd: a .tzst or .wcp component
+    if head in (b"\x28\xb5\x2f\xfd", b"\xed\xab\xee\xdb") or head[:2] == b"7z":
+        return "archive"   # zstd (.tzst, .wcp), rpm, 7z: read through bsdtar
+    if head in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
+        return "native"    # Mach-O (thin or universal)
     if head[:2] == b"PK" or p.endswith((".tar.xz", ".tar.gz", ".tgz", ".tar.zst", ".zip", ".tar")):
         # Enginehost core bundles ship as zips or tarballs beside
         # enginehost-public-key.json; the caller can say so explicitly.
@@ -53,36 +55,53 @@ def kind_of(path: str | Path) -> str:
     return "unknown"
 
 
-def _safe_name(name: str) -> str | None:
+def _safe_name(name: str, rooted_ok: bool = False) -> str | None:
+    """rooted_ok: an installer package (rpm, cpio) names its files from the
+    system root (/usr/bin/...), by design. Those land under the destination
+    as if it were that root. A ".." still leaves it, so it is still refused."""
     pp = PurePosixPath(name.replace("\\", "/"))
-    if pp.is_absolute() or ".." in pp.parts or not pp.parts:
+    if rooted_ok and pp.is_absolute():
+        pp = PurePosixPath(*pp.parts[1:]) if len(pp.parts) > 1 else PurePosixPath()
+    if pp.is_absolute() or ".." in pp.parts or not pp.parts or str(pp) == ".":
         return None
     return str(pp)
 
 
-def _unzstd(src: Path) -> Path | None:
-    """A zstd-compressed tar (.tzst, droidtop-components' .wcp), through the
-    zstd tool, since Python's tarfile can't read zstd before 3.14."""
+def _as_tar(src: Path) -> Path | None:
+    """An archive Python can't read itself (zstd: .tzst and .wcp; rpm; 7z;
+    cpio), rewritten as a plain tar by libarchive's bsdtar, reused. bsdtar
+    never writes the members to disk: they go through extract()'s own tar
+    path, with all its checks."""
     import shutil
     import subprocess
     import tempfile
 
-    with open(src, "rb") as fh:
-        if fh.read(4) != b"\x28\xb5\x2f\xfd" or not shutil.which("zstd"):
-            return None
-    out = Path(tempfile.mkdtemp(prefix="unzstd-")) / (src.name + ".tar")
-    r = subprocess.run(["zstd", "-q", "-d", "--no-progress", "-o", str(out), str(src)], capture_output=True)
-    return out if r.returncode == 0 else None
+    if not shutil.which("bsdtar") or zipfile.is_zipfile(src) or tarfile.is_tarfile(src):
+        return None
+    out = Path(tempfile.mkdtemp(prefix="as-tar-")) / (src.name + ".tar")
+    # -P keeps every name exactly as the archive gives it (bsdtar would
+    # otherwise drop a leading "/" and ".." silently), so extract() judges
+    # them itself.
+    r = subprocess.run(["bsdtar", "-c", "-P", "-f", str(out), "--format=pax", f"@{src}"], capture_output=True)
+    if r.returncode != 0 or not out.exists() or not tarfile.is_tarfile(out):
+        shutil.rmtree(out.parent, ignore_errors=True)
+        return None
+    return out
 
 
-def extract(src: str | Path, dest: str | Path, nested: bool = True, _depth: int = 0) -> list[Finding]:
+def extract(src: str | Path, dest: str | Path, nested: bool = True, _depth: int = 0,
+            _rooted_ok: bool = False) -> list[Finding]:
     """Extract src into dest. Returns findings about the archive itself."""
     src, dest = Path(src), Path(dest)
-    plain = _unzstd(src)
+    plain = _as_tar(src)
     if plain is not None:
         import shutil
         try:
-            return extract(plain, dest, nested, _depth)
+            # rpm and cpio are installer packages, rooted at /.
+            with open(src, "rb") as fh:
+                magic = fh.read(6)
+            rooted = magic[:4] == b"\xed\xab\xee\xdb" or magic in (b"070701", b"070702", b"070707")
+            return extract(plain, dest, nested, _depth, _rooted_ok=rooted)
         finally:
             shutil.rmtree(plain.parent, ignore_errors=True)
     dest.mkdir(parents=True, exist_ok=True)
@@ -136,7 +155,7 @@ def extract(src: str | Path, dest: str | Path, nested: bool = True, _depth: int 
                 if n > MAX_MEMBERS:
                     refuse("archive.too-many-members", "", f"over {MAX_MEMBERS} members")
                     return findings
-                name = _safe_name(ti.name)
+                name = _safe_name(ti.name, _rooted_ok)
                 if name is None:
                     refuse("archive.path-escape", ti.name, "A member's path leaves the archive (tar-slip).")
                     continue

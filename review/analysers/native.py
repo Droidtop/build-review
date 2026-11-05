@@ -61,7 +61,9 @@ def is_native(path: Path) -> bool:
             head = fh.read(4)
     except OSError:
         return False
-    return head == b"\x7fELF" or head[:2] == b"MZ"
+    # ELF, PE, and Mach-O (thin and universal): LIEF parses all of them.
+    return head == b"\x7fELF" or head[:2] == b"MZ" or head in (
+        b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe")
 
 
 def analyse(root: Path, profile: Profile, facts: dict, rel_base: Path | None = None,

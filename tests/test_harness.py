@@ -506,7 +506,7 @@ def test_catalog_text_mentioning_a_url_is_not_a_download(tmp_path):
     assert manifests.catalog(cat, _profile(), {}) == []
 
 
-@pytest.mark.skipif(not shutil.which("zstd"), reason="zstd not installed")
+@pytest.mark.skipif(not (shutil.which("zstd") and shutil.which("bsdtar")), reason="zstd or bsdtar not installed")
 def test_zstd_component_archives_unpack(tmp_path):
     import subprocess
     (tmp_path / "in").mkdir()
@@ -518,3 +518,21 @@ def test_zstd_component_archives_unpack(tmp_path):
     assert kind_of(tmp_path / "c.tzst") == "archive"
     assert extract(tmp_path / "c.tzst", tmp_path / "out") == []
     assert (tmp_path / "out" / "a.txt").read_text() == "x"
+
+
+@pytest.mark.skipif(not shutil.which("bsdtar"), reason="bsdtar not installed")
+def test_bsdtar_packages_rooted_at_slash_but_dotdot_refused(tmp_path):
+    import subprocess
+    (tmp_path / "d").mkdir()
+    (tmp_path / "d" / "ok.txt").write_text("x")
+    # A cpio package naming a file from the root lands under dest.
+    subprocess.run(["bsdtar", "-c", "-f", str(tmp_path / "a.cpio"), "--format=cpio", "-P", "-C", str(tmp_path),
+                    "d/ok.txt", str(tmp_path / "d" / "ok.txt")], check=True)
+    assert extract(tmp_path / "a.cpio", tmp_path / "out") == []
+    assert (tmp_path / "out" / str(tmp_path).lstrip("/") / "d" / "ok.txt").exists()
+    # A ".." still leaves it, and is still refused.
+    (tmp_path / "e").mkdir()
+    subprocess.run(["bsdtar", "-c", "-f", str(tmp_path / "b.cpio"), "--format=cpio", "-P", "-C", str(tmp_path / "e"),
+                    "../d/ok.txt"], check=True)
+    found = extract(tmp_path / "b.cpio", tmp_path / "out2")
+    assert any(f.rule == "archive.path-escape" for f in found)

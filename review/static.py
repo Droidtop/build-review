@@ -92,7 +92,7 @@ def review_artefact(art: Path, kind: str, profile: Profile, facts: dict, facts_o
                 out += apk.analyse_dex(dexes, profile, facts, art.name)
             for inner in sorted((work / art.name).rglob("*.apk")):
                 out += _inner_apk(inner, profile, facts, facts_only)
-        elif kind == "elf" or kind == "native":
+        elif kind in ("elf", "native"):
             shutil.copy(art, work / art.name)
         else:
             shutil.copy(art, work / art.name)
