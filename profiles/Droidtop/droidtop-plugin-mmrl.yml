@@ -14,10 +14,18 @@ plugin_permissions:
   # From ci/root-through-provider-892 (07b08b5, Droidtop/tracker#892) on; earlier
   # releases declare nothing and run su directly (https://github.com/Droidtop/tracker/issues/550#issuecomment-6651850434).
   priv.shell.root: "Lists your modules, switches them on and off, and installs new ones (manifest, optional)"
-# Not stated here, on purpose: its dex runs `su -c` directly (RootShell.exec,
-# from ModuleManager and RootProvider) under a contract 3 manifest that
-# declares requestsRoot and no priv.shell.root. That bypasses droidtop's root
-# approval (plugin-api.md 2.7 point 4: the requestsRoot shim is not offered
-# to contract 2+), so the su and exec findings stay until it is fixed in code.
+# su: earlier releases (e5b2ffe and before) run `su -c` directly from
+# RootShell.exec under a contract 3 manifest with requestsRoot and no
+# priv.shell.root, bypassing droidtop's root approval (Droidtop/tracker#892).
+# Their "su" string is used by RootShell, which is not named below, so those
+# releases still get the finding.
+# From 7f8caa4 on, the plugin runs Magisk's own CLI through the enhanced
+# privileges provider as an argv list, which is its purpose. The su rule
+# matches the bare string "magisk", and these are the only two callers that
+# use it (build review batch 42120200445, plugin-build.26).
+api_callers_ok:
+  su:
+    "Ldev/droidtop/plugins/mmrl/RootProvider$Companion;": "detect() asks the provider to run `magisk -v` (then ksud, apd) to tell the root solutions apart; through PrivilegedShell, the provider's exec, with no su (RootProvider.kt, RootProvider.detect, at 7f8caa4, Droidtop/tracker#892)"
+    "Ldev/droidtop/plugins/mmrl/ModuleManager;": "install() runs `magisk --install-module <zip>` (or ksud/apd) as an argv list through PrivilegedShell.execLong, the provider's exec_stream, with no su (ModuleManager.kt, ModuleManager.install, at 7f8caa4, Droidtop/tracker#892)"
 hosts:
   github.com: "Upstream attribution in the code (MmrlPlugin.kt:19)"
