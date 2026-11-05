@@ -1,0 +1,15 @@
+# Nyaa (gamegrab.nyaa). DRAFT by the harness lane (2026-11-05), read from the repo at
+# 8e8c09d (manifest.template.json and its code); its published bundles could not be fetched from this
+# lane's sandbox. The plugins lane confirms it on Droidtop/tracker#550.
+repo: gamegrab-sources/droidtop-plugin-nyaa
+extends: _kinds/gamegrab-plugin
+purpose: >
+  Searches Nyaa and Sukebei for games and opens a torrent in your torrent app.
+  (manifest.template.json)
+plugin_permissions:
+  net.domains: "Searches the sites' public RSS feeds (manifest)"
+  apps.view: "Hands a torrent's magnet link to a torrent app you have installed (droidtop has no torrent client) (manifest)"
+hosts:
+  "nyaa.si": "Declared in net.domains (manifest)"
+  "sukebei.nyaa.si": "Declared in net.domains (manifest)"
+  "github.com": "The plugin's homepage and releases"

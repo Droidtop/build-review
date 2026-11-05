@@ -1,0 +1,36 @@
+# F95zone (gamegrab.f95). DRAFT by the harness lane (2026-11-05), read from the repo at
+# 8802551 (manifest.template.json and its code); its published bundles could not be fetched from this
+# lane's sandbox. The plugins lane confirms it on Droidtop/tracker#550.
+repo: gamegrab-sources/droidtop-plugin-f95
+extends: _kinds/gamegrab-plugin
+purpose: >
+  Finds F95zone games, checks your linked games for new versions, and downloads them with your
+  F95zone account. (manifest.template.json)
+build:
+  # A flutter_embed plugin: its own build job (pinned Flutter SDK) is replayed, and it uploads
+  # the unsigned payload before its Sign step, which fails here for want of a key.
+  setup: act
+  workflow: .github/workflows/build.yml
+  job: bundle
+  signs_after_build: true
+  outputs:
+    "**/droidtop_plugin/build": "{plugin-bundle}"
+  repack: tree
+plugin_permissions:
+  net.domains: "Searches F95zone, asks F95Checker's public index for thread versions and details, and names a thread's banner for droidtop to fetch as the game's cover (manifest)"
+  web.session: "Lets you sign in to F95zone in droidtop's browser view, to see download links and sync your watch list (manifest)"
+  notify.post: "Tells you when a game you linked has a new version (manifest)"
+  library.folders.write: "Games you choose to download are placed in your game folder (manifest)"
+  context.sync: "Keeps your watched threads, and the versions you installed and finished, the same as F95Checker's on your paired computers (manifest)"
+hosts:
+  "f95zone.to": "Declared in net.domains (manifest)"
+  "attachments.f95zone.to": "Declared in net.domains (manifest)"
+  "api.f95checker.dev": "Declared in net.domains (manifest)"
+  "gofile.io": "TO IDENTIFY: named in the plugin's code as a download host but not in its net.domains; plugins lane to say whether droidtop's downloads, not the plugin, fetch these"
+  "mega.nz": "TO IDENTIFY: named in the plugin's code as a download host but not in its net.domains; plugins lane to say whether droidtop's downloads, not the plugin, fetch these"
+  "pixeldrain.com": "TO IDENTIFY: named in the plugin's code as a download host but not in its net.domains; plugins lane to say whether droidtop's downloads, not the plugin, fetch these"
+  "akirabox.com": "TO IDENTIFY: named in the plugin's code as a download host but not in its net.domains; plugins lane to say whether droidtop's downloads, not the plugin, fetch these"
+  "dl.akirabox.com": "TO IDENTIFY: named in the plugin's code as a download host but not in its net.domains; plugins lane to say whether droidtop's downloads, not the plugin, fetch these"
+  "datanodes.to": "TO IDENTIFY: named in the plugin's code as a download host but not in its net.domains; plugins lane to say whether droidtop's downloads, not the plugin, fetch these"
+  "dl.datanodes.to": "TO IDENTIFY: named in the plugin's code as a download host but not in its net.domains; plugins lane to say whether droidtop's downloads, not the plugin, fetch these"
+  "github.com": "The plugin's homepage and releases"

@@ -1,0 +1,19 @@
+# Repacks (gamegrab.repacks). DRAFT by the harness lane (2026-11-05), read from the repo at
+# a8245cc (manifest.template.json and its code); its published bundles could not be fetched from this
+# lane's sandbox. The plugins lane confirms it on Droidtop/tracker#550.
+repo: gamegrab-sources/droidtop-plugin-repacks
+extends: _kinds/gamegrab-plugin
+purpose: >
+  Finds FitGirl, DODI and ElAmigos releases, checks your linked games for new versions, and
+  downloads them or opens their torrents. (manifest.template.json)
+plugin_permissions:
+  net.domains: "Reads the sites' search pages, release pages and release list (manifest)"
+  web.session: "Opens a release's direct links in droidtop's browser view, where you go through the file host's page, so the download it starts can run in droidtop's Downloads (manifest)"
+  notify.post: "Tells you when a release you linked to a game has a new version (manifest)"
+  library.folders.write: "Releases you download are placed in your game folder (manifest)"
+  apps.view: "Hands magnet links to a torrent app you have installed (droidtop has no torrent client) and opens release and torrent-file pages in your browser (manifest)"
+hosts:
+  "fitgirl-repacks.site": "Declared in net.domains (manifest)"
+  "dodi-repacks.site": "Declared in net.domains (manifest)"
+  "elamigos.site": "Declared in net.domains (manifest)"
+  "github.com": "The plugin's homepage and releases"

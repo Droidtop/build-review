@@ -1,0 +1,16 @@
+# BIOS and firmware (gamegrab.bios). DRAFT by the harness lane (2026-11-05), read from the repo at
+# f215b33 (manifest.template.json and its code); its published bundles could not be fetched from this
+# lane's sandbox. The plugins lane confirms it on Droidtop/tracker#550.
+repo: gamegrab-sources/droidtop-plugin-bios
+extends: _kinds/gamegrab-plugin
+purpose: >
+  Finds the BIOS and firmware files your emulators ask for and downloads them, checked where the
+  source gives a checksum. (manifest.template.json)
+plugin_permissions:
+  net.domains: "Checks that a file is still there before it is downloaded, and lists the files of an Internet Archive item you add (manifest)"
+  library.folders.write: "A file you choose to download is placed in the folder droidtop gives it (manifest)"
+hosts:
+  "raw.githubusercontent.com": "Declared in net.domains (manifest)"
+  "archive.org": "Declared in net.domains (manifest)"
+  "*.archive.org": "Declared in net.domains (manifest)"
+  "github.com": "The plugin's homepage and releases"

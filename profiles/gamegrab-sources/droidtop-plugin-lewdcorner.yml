@@ -1,0 +1,17 @@
+# LewdCorner (gamegrab.lewdcorner). DRAFT by the harness lane (2026-11-05), read from the repo at
+# ead59ce (manifest.template.json and its code); its published bundles could not be fetched from this
+# lane's sandbox. The plugins lane confirms it on Droidtop/tracker#550.
+repo: gamegrab-sources/droidtop-plugin-lewdcorner
+extends: _kinds/gamegrab-plugin
+purpose: >
+  Finds LewdCorner games, checks your linked games for new versions, and downloads them with your
+  LewdCorner account. (manifest.template.json)
+plugin_permissions:
+  net.domains: "Reads LewdCorner's search, forum and thread pages (manifest)"
+  web.session: "Lets you sign in to LewdCorner in droidtop's browser view: the site shows download links to members and lets requests through its Cloudflare check only with that session (manifest)"
+  notify.post: "Tells you when a game you linked has a new version (manifest)"
+  library.folders.write: "Games you choose to download are placed in your game folder (manifest)"
+  apps.view: "Opens a thread in your browser (manifest)"
+hosts:
+  "lewdcorner.com": "Declared in net.domains (manifest)"
+  "github.com": "The plugin's homepage and releases"

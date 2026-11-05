@@ -1,0 +1,17 @@
+# What the gamegrab-sources plugins share: droidtop plugins (python or
+# flutter_embed) each built by its own build.sh, then signed and published in
+# the same job of its own build.yml. A rebuild runs that build.sh with no
+# secrets; it writes the unsigned build/ tree (manifest.json and the payload),
+# the published bundle's layout minus the trust files sign.sh adds.
+artefacts:
+  - {pattern: "*.droidplugin.tar.xz", kind: plugin-bundle}
+build:
+  setup: none
+  command: ./build.sh
+  outputs:
+    "build": "{plugin-bundle}"
+  repack: tree
+permissions: []
+api: {}
+dynamic:
+  skip_reason: "A plugin runs inside droidtop's plugin host; installed alone there is nothing to run. Its behaviour is bounded by the host-API permissions it declares, which are reviewed."

@@ -1,0 +1,19 @@
+# Abandonware (gamegrab.abandonware). DRAFT by the harness lane (2026-11-05), read from the repo at
+# 6ad1b26 (manifest.template.json and its code); its published bundles could not be fetched from this
+# lane's sandbox. The plugins lane confirms it on Droidtop/tracker#550.
+repo: gamegrab-sources/droidtop-plugin-abandonware
+extends: _kinds/gamegrab-plugin
+purpose: >
+  Searches MyAbandonware and the Internet Archive for old DOS and Windows games and downloads the
+  one you pick. (manifest.template.json)
+plugin_permissions:
+  net.domains: "Searches MyAbandonware and the Internet Archive, reads a game's page and asks where its file is before it is downloaded (manifest)"
+  web.session: "MyAbandonware checks that a visitor is a browser. This opens the site in droidtop's own browser view, where you pass that check yourself, and uses that session for the plugin's requests to the site (manifest)"
+  library.folders.write: "A game you choose to download is placed in the folder droidtop gives it (manifest)"
+hosts:
+  "www.myabandonware.com": "Declared in net.domains (manifest)"
+  "*.myabandonware.com": "Declared in net.domains (manifest)"
+  "archive.org": "Declared in net.domains (manifest)"
+  "*.archive.org": "Declared in net.domains (manifest)"
+  "myabandonware.com": "Declared in web.session (manifest)"
+  "github.com": "The plugin's homepage and releases"
