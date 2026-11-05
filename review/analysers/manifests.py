@@ -58,8 +58,11 @@ def _iter_hashes(manifest: dict):
 # as their first member (Enginehost docs/engine-bundle-format.md).
 MANIFEST_NAMES = {"plugin-bundle": ("manifest.json",), "engine-bundle": ("enginehost-bundle.json",),
                   "bundle": ("manifest.json", "enginehost-bundle.json")}
-SIGNATURE_FILES = ("manifest.json", "manifest.jws", "enginehost-bundle.json", "enginehost-bundle.sig",
-                   "enginehost-bundle.jws")
+# Trust files, which are not payload: droidtop's PluginBundleInstaller.TRUST_FILES
+# (manifest.json, manifest.jws, legacy manifest.sig and origin.cert) and
+# Enginehost's first members.
+SIGNATURE_FILES = ("manifest.json", "manifest.jws", "manifest.sig", "origin.cert", "enginehost-bundle.json",
+                   "enginehost-bundle.sig", "enginehost-bundle.jws")
 
 
 def payload_sha256(base: Path, files: list[dict]) -> str:
