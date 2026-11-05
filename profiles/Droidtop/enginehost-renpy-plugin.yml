@@ -1,0 +1,11 @@
+# The renpy core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# renpy-8_5-v1-testing (dev.enginehost.renpy.8_5.v1.enginehost.tar.xz) and the core at 89081d0710. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-renpy-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs Ren'Py 8.5 games with the upstream Ren'Py runtime as an Enginehost core on the activity transport.
+  bundle-metadata.json: engine renpy, lockdown None, transport android-activity.
+build:
+  workflow: .github/workflows/android-plugin.yml   # the core's own build job (it uploads build/unsigned.tar)
+  job: android

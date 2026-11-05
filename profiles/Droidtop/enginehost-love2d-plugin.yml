@@ -1,0 +1,11 @@
+# The love2d core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# love2d-11-v1-testing (dev.enginehost.love2d.11.v1.enginehost.tar.xz) and the core at 9ec1643e3e. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-love2d-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs LÖVE 11 games with the upstream LÖVE Android port as an Enginehost core.
+  bundle-metadata.json: engine love2d, lockdown True, transport plugin-api.
+build:
+  workflow: .github/workflows/android-plugin.yml   # the core's own build job (it uploads build/unsigned.tar)
+  job: android

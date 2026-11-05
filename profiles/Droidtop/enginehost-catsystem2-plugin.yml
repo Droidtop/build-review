@@ -1,0 +1,8 @@
+# The catsystem2 core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# catsystem2-cst-v1-testing (dev.enginehost.catsystem2.cst.v1.enginehost.tar.xz) and the core at 2b6ac4dbdd. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-catsystem2-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs CatSystem2 visual novels with an engine written from the formats, as an Enginehost core.
+  bundle-metadata.json: engine catsystem2, lockdown None, transport plugin.

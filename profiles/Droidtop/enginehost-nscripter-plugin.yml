@@ -1,0 +1,11 @@
+# The nscripter core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# nscripter-onsyuri-v1-unstable (dev.enginehost.nscripter.onsyuri.v1.enginehost.tar.xz) and the core at fdc8236af1. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-nscripter-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs NScripter/ONScripter games with ONScripter-Yuri as an Enginehost core.
+  bundle-metadata.json: engine nscripter, lockdown None, transport plugin.
+build:
+  workflow: .github/workflows/android-plugin.yml   # the core's own build job (it uploads build/unsigned.tar)
+  job: bundle

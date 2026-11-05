@@ -1,0 +1,11 @@
+# The godot core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# godot-v46-v1-build.226 (dev.enginehost.godot.v46.v1.enginehost.tar.xz) and the core at 658dafcbd0. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-godot-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs Godot 4.6 games with the upstream Godot engine (MIT) as an Enginehost core; its runtime ships as runtime/godot.apk.
+  bundle-metadata.json: engine godot, lockdown None, transport plugin.
+build:
+  workflow: .github/workflows/enginehost-android.yml   # the core's own build job (it uploads build/unsigned.tar)
+  job: bundle

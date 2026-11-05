@@ -1,0 +1,11 @@
+# The buriko core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# buriko-openbgi-v1-unstable (dev.enginehost.buriko.openbgi.v1.enginehost.tar.xz) and the core at 6347483f5b. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-buriko-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs BGI/Ethornell (Buriko) visual novels with OpenBGI as an Enginehost core.
+  bundle-metadata.json: engine buriko, lockdown None, transport plugin.
+build:
+  workflow: .github/workflows/android.yml   # the core's own build job (it uploads build/unsigned.tar)
+  job: android

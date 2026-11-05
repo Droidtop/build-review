@@ -1,0 +1,8 @@
+# The rpgmaker-mv-mz core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# rpgmaker-mv-mz-v1-testing (dev.enginehost.rpgmaker.mv-mz.v1.enginehost.tar.xz) and the core at 0a9b247ef1. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-rpgmaker-mv-mz-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs RPG Maker MV and MZ games from their own folder in Enginehost's web host, as an Enginehost core.
+  bundle-metadata.json: engine rpgmaker, lockdown True, transport plugin.

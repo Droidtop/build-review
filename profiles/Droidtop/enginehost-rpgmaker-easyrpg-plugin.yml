@@ -1,0 +1,11 @@
+# The rpgmaker-easyrpg core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# rpgmaker-easyrpg-v1-testing (dev.enginehost.rpgmaker.easyrpg.v1.enginehost.tar.xz) and the core at f4b07d25c5. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-rpgmaker-easyrpg-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs RPG Maker 2000/2003 games with EasyRPG Player as an Enginehost core.
+  bundle-metadata.json: engine rpgmaker, lockdown None, transport plugin.
+build:
+  workflow: .github/workflows/android-plugin.yml   # the core's own build job (it uploads build/unsigned.tar)
+  job: android

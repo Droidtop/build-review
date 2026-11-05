@@ -1,0 +1,11 @@
+# The ags core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# ags-3-v1-testing (dev.enginehost.ags.3.v1.enginehost.tar.xz) and the core at e22894bf76. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-ags-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs Adventure Game Studio games: the upstream AGS engine (Artistic License 2.0) as an Enginehost core.
+  bundle-metadata.json: engine ags, lockdown None, transport android-activity.
+build:
+  workflow: .github/workflows/android-plugin.yml   # the core's own build job (it uploads build/unsigned.tar)
+  job: android

@@ -1,0 +1,8 @@
+# The cmvs core's review profile. DRAFT by the harness lane (2026-11-05), read from
+# cmvs-ps2-ps3-v1-testing (dev.enginehost.cmvs.ps2-ps3.v1.enginehost.tar.xz) and the core at f19c997dde. The Enginehost
+# cores lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-cmvs-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  Runs CMVS visual novels: reads PS2A/PS3 scripts in place and shows their dialogue, as an Enginehost core.
+  bundle-metadata.json: engine cmvs, lockdown None, transport plugin.
