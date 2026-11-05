@@ -1,0 +1,14 @@
+# The HTML core's review profile. DRAFT by the harness lane (2026-11-05),
+# read from html-v1-build.76 (dev.enginehost.html.v1.enginehost.tar.xz) and
+# the core's plugin/stable branch (db6b791). The Enginehost cores lane
+# confirms it on Droidtop/tracker#550.
+repo: Droidtop/enginehost-html-plugin
+extends: _kinds/enginehost-core
+purpose: >
+  An Enginehost core that runs a game made as a web page (compiled Twine 2
+  stories and other HTML games) from the game's own folder in Android's
+  WebView. Network access is off unless the person turns on allowNetwork;
+  navigation stays inside the game folder (README; bundle-metadata.json,
+  lockdown true).
+api:
+  webview-js-bridge: "The page talks to Enginehost's web host through the WebView bridge (plugin-web GameWebView.open)"

@@ -90,6 +90,8 @@ def load(repo: str, root: Path = ROOT) -> Profile:
             continue
         if isinstance(v, list) and isinstance(data.get(k), list):
             data[k] = v + data[k]
+        elif isinstance(v, dict) and isinstance(data.get(k), dict):
+            data[k] = {**v, **data[k]}          # the repo's own entries win
         else:
             data.setdefault(k, v)
     # Entries are either a list or a {name: reason} map (the lanes write
