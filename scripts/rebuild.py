@@ -67,7 +67,15 @@ def clean_env() -> dict:
 
 
 def run_command(src: Path, command: str, env: dict) -> Path:
-    r = subprocess.run(["bash", "-euo", "pipefail", "-c", command], cwd=src, env=env)
+    # Memory every 30 s into the build's log, so a build that loses its
+    # runner leaves how close it came (pilot runs 42002552036, 42070954537).
+    vmstat = subprocess.Popen(["vmstat", "-t", "-S", "M", "30"]) if shutil.which("vmstat") else None
+    try:
+        r = subprocess.run(["bash", "-euo", "pipefail", "-c", command], cwd=src, env=env)
+    finally:
+        if vmstat:
+            vmstat.terminate()
+            vmstat.wait()
     if r.returncode:
         fail(f"the build failed at that commit (exit {r.returncode}; log in the run)")
     return src

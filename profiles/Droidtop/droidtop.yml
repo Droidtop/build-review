@@ -23,7 +23,16 @@ build:
   # SIGNING_KEYSTORE_PATH is unset, so a rebuild needs no signing material.
   # Both published APKs, under their published names
   # (build-scripts/release_channel.py:102-103), so the two reviews compare.
-  command: ./gradlew :app:assembleRelease :app:assembleDebug --stacktrace
+  # Release and debug in two Gradle runs with two workers each, the daemon
+  # stopped between them. droidtop's gradle.properties budgets ~13 of the
+  # runner's 16 GB for a build that restores droidtop's own Gradle cache; a
+  # rebuild here starts cold, and twice lost its runner in R8 with that one
+  # command (pilot runs 42002552036 and 42070954537: 80 GB disk free, 15,982
+  # MB memory). Neither the worker count nor the order changes what is built.
+  command: >-
+    ./gradlew --max-workers=2 :app:assembleRelease --stacktrace &&
+    ./gradlew --stop &&
+    ./gradlew --max-workers=2 :app:assembleDebug --stacktrace
   outputs:
     "app/build/outputs/apk/release/app-universal-release*.apk": droidtop.apk
     "app/build/outputs/apk/debug/app-universal-debug*.apk": droidtop-debug.apk
