@@ -5,14 +5,10 @@ through its first comments past GitHub's body limit. Each line is
 
     - [ ] `<tag>` <date>[ pre] | <signer evidence>
 
-under a `### <owner>/<repo> (<count>)` heading. The runner plans which lines
-to review (unticked, filtered), and afterwards ticks each reviewed line with
-its outcome and a link to its report, leaving the evidence text as it was:
-
-    - [x] `<tag>` <date> | <evidence> — **approved**, [report](<url>)
-
-A line is only ticked for a final outcome (approved, rebuilt, refused); a
-review that fails to run leaves it unticked for the next pass.
+under a `### <owner>/<repo> (<count>)` heading. The runner only reads it: it
+plans which lines to review (unticked, filtered), and the outcomes go into
+build-review-results.json, never back into the issue (owner, 2026-11-05:
+"Drop the token, file the issues yourself").
 """
 from __future__ import annotations
 
@@ -21,8 +17,7 @@ import re
 from dataclasses import dataclass
 
 HEAD_RE = re.compile(r"^###\s+([\w.-]+/[\w.-]+)\b")
-LINE_RE = re.compile(r"^(?P<pre>\s*-\s\[)(?P<box>[ xX])(?P<mid>\]\s+`(?P<tag>[^`]+)`(?P<rest>.*?))"
-                     r"(?P<result>\s+—\s+\*\*(?:approved|rebuilt|refused)\*\*.*)?$")
+LINE_RE = re.compile(r"^\s*-\s\[(?P<box>[ xX])\]\s+`(?P<tag>[^`]+)`(?P<rest>.*)$")
 OUTCOMES = ("approved", "rebuilt", "refused")
 
 
@@ -72,78 +67,6 @@ def last_repo(text: str, repo: str | None = None) -> str | None:
         if h:
             repo = h.group(1)
     return repo
-
-
-BODY_LIMIT = 65_000  # GitHub refuses issue bodies and comments over 65,536 characters
-
-
-def tick(text: str, results: dict[str, dict], repo: str | None = None,
-         limit: int = BODY_LIMIT) -> tuple[str, int, list[str]]:
-    """results: {"repo@tag": {"outcome", "reason", "report"}}.
-
-    Returns (new text, lines changed, keys ticked without their link). The
-    inventory sits near GitHub's size limit, so each tick carries its report
-    link only while the part has room; past that the tick carries the
-    outcome alone and the link is in the runner's results comment (one per
-    repo, `results_comment`), which the inventory links to.
-    """
-    lines, changed, linkless = text.splitlines(), 0, []
-    size = len(text)
-    for i, line in enumerate(lines):
-        h = HEAD_RE.match(line)
-        if h:
-            repo = h.group(1)
-            continue
-        m = LINE_RE.match(line)
-        if not (m and repo):
-            continue
-        key = f"{repo}@{m.group('tag')}"
-        r = results.get(key)
-        if not r or r.get("outcome") not in OUTCOMES:
-            continue
-        reason = f" ({r['reason']})" if r.get("reason") and r["outcome"] == "refused" else ""
-        head = f"{m.group('pre')}x{m.group('mid')} — **{r['outcome']}**{reason}"
-        new = head + (f", [report]({r['report']})" if r.get("report") else "")
-        if size - len(line) + len(new) > limit:
-            new = head
-            linkless.append(key)
-            if size - len(line) + len(new) > limit:
-                new = f"{m.group('pre')}x{m.group('mid')} — {r['outcome']}"
-        if new != line:
-            size += len(new) - len(line)
-            lines[i] = new
-            changed += 1
-    tail = "\n" if text.endswith("\n") else ""
-    return "\n".join(lines) + tail, changed, linkless
-
-
-RESULTS_MARK = "<!-- build-review:results repo={repo} -->"
-
-
-def results_comment(repo: str, rows: dict[str, dict]) -> str:
-    """The runner's own per-repo results comment: every reviewed release of
-    `repo`, its outcome and its report. Edited in place on each pass."""
-    lines = [RESULTS_MARK.format(repo=repo), f"### Build review results: {repo}", "",
-             "| Release | Outcome | Report |", "|---|---|---|"]
-    for key in sorted(rows, key=lambda k: rows[k].get("reviewedAt", ""), reverse=True):
-        r = rows[key]
-        out = r["outcome"] + (f" ({r['reason']})" if r.get("reason") and r["outcome"] == "refused" else "")
-        rep = f"[report]({r['report']})" if r.get("report") else ""
-        lines.append(f"| `{key.split('@', 1)[1]}` | **{out}** | {rep} |")
-    return "\n".join(lines) + "\n"
-
-
-def parse_results_comment(text: str) -> dict[str, dict]:
-    m = re.search(r"build-review:results repo=([\w./-]+)", text)
-    if not m:
-        return {}
-    repo, out = m.group(1), {}
-    for line in text.splitlines():
-        r = re.match(r"^\| `([^`]+)` \| \*\*(approved|rebuilt|refused)(?: \(([\w-]+)\))?\*\* \|(?: \[report\]\(([^)]+)\))? \|", line)
-        if r:
-            out[f"{repo}@{r.group(1)}"] = {"outcome": r.group(2), "reason": r.group(3) or "",
-                                          "report": r.group(4) or ""}
-    return out
 
 
 def load_inventory(gh, repo: str, number: int, comment_limit: int = 2):

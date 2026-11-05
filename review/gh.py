@@ -1,8 +1,9 @@
-"""The few GitHub REST calls the harness makes, with the token it is given.
+"""The few GitHub REST calls the harness makes. All of them read.
 
-The token is BUILD_REVIEW_TOKEN: read access to the repos under review and
-issue write on Droidtop/tracker. It is never a signing secret, and nothing
-here touches releases' assets except to download them.
+Every repo the harness reads is public, so it uses the run's own
+GITHUB_TOKEN (for the rate limit) or none. There is no harness token and the
+harness writes nothing to GitHub through this module (owner, 2026-11-05:
+"Drop the token, file the issues yourself").
 """
 from __future__ import annotations
 
@@ -19,9 +20,11 @@ API = os.environ.get("GITHUB_API_URL", "https://api.github.com")
 
 class GitHub:
     def __init__(self, token: str | None = None):
-        self.token = token or os.environ.get("BUILD_REVIEW_TOKEN") or os.environ.get("GH_TOKEN") or ""
+        self.token = token or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
 
     def _req(self, method: str, path: str, body=None, accept="application/vnd.github+json", raw=False):
+        if method != "GET":
+            raise RuntimeError("the build review harness only reads from GitHub")
         url = path if path.startswith("http") else f"{API}{path}"
         data = json.dumps(body).encode() if body is not None else None
         for attempt in range(5):
@@ -86,15 +89,3 @@ class GitHub:
 
     def comments(self, repo: str, number: int) -> list[dict]:
         return list(self.paged(f"/repos/{repo}/issues/{number}/comments"))
-
-    def edit_issue_body(self, repo: str, number: int, body: str):
-        return self._req("PATCH", f"/repos/{repo}/issues/{number}", {"body": body})
-
-    def edit_comment(self, repo: str, comment_id: int, body: str):
-        return self._req("PATCH", f"/repos/{repo}/issues/comments/{comment_id}", {"body": body})
-
-    def create_issue(self, repo: str, title: str, body: str, labels: list[str]):
-        return self._req("POST", f"/repos/{repo}/issues", {"title": title, "body": body, "labels": labels})
-
-    def open_issues(self, repo: str, label: str):
-        return list(self.paged(f"/repos/{repo}/issues?state=open&labels={urllib.parse.quote(label)}"))

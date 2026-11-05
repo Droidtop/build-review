@@ -225,33 +225,49 @@ def test_batch_parse_carries_heading_into_comment():
     assert len(batch.plan(items, limit=1)) == 1
 
 
-def test_batch_tick_keeps_evidence_and_is_idempotent():
-    res = {"Droidtop/droidtop-agent@build-130": {"outcome": "refused", "reason": "code", "report": "https://r/1"}}
-    new, n, linkless = batch.tick(BODY, res)
-    assert n == 1 and not linkless
-    line = [l for l in new.splitlines() if "build-130" in l][0]
-    assert line == "- [x] `build-130` 2026-10-31 | sha256 list only — **refused** (code), [report](https://r/1)"
-    again, n2, _ = batch.tick(new, res)
-    assert again == new and n2 == 0
-    # A re-review replaces the result rather than stacking a second one.
-    res2 = {"Droidtop/droidtop-agent@build-130": {"outcome": "approved", "reason": "clean", "report": "https://r/2"}}
-    third, _, _ = batch.tick(new, res2)
-    assert third.count("**") == 2 and "approved" in third and "refused" not in third
+def test_profile_reason_maps_and_to_identify(tmp_path):
+    root = tmp_path / "profiles"
+    (root / "T").mkdir(parents=True)
+    (root / "T" / "r.yml").write_text(
+        "permissions:\n  android.permission.INTERNET: \"downloads\"\n"
+        "native_libs:\n  libok.so: \"ours\"\n  libnrb.so: \"TO IDENTIFY: not ours\"\n"
+        "explained:\n  - {rule: apkid.packer, location: \"x*.apk\", reason: r8, source: \"https://t/1\"}\n"
+        "build: {command: make}\n")
+    p = prof.load("T/r", root)
+    assert p.permissions == ["android.permission.INTERNET"]
+    assert p.lib_ok("libok.so") and not p.lib_ok("libnrb.so")
+    assert p.reasons["native_libs"]["libnrb.so"].startswith("TO IDENTIFY")
+    assert p.explanation("apkid.packer", "x-1.apk")["source"] == "https://t/1"
+    assert p.explanation("apkid.packer", "other.apk") is None
 
 
-def test_batch_tick_respects_the_size_limit():
-    res = {"Droidtop/droidtop-agent@build-130": {"outcome": "approved", "reason": "clean", "report": "https://r/" + "x" * 80}}
-    new, n, linkless = batch.tick(BODY, res, limit=len(BODY) + 20)
-    assert n == 1 and linkless == ["Droidtop/droidtop-agent@build-130"]
-    assert len(new) <= len(BODY) + 20
+def test_explained_needs_a_source(tmp_path):
+    root = tmp_path / "profiles"
+    (root / "T").mkdir(parents=True)
+    (root / "T" / "r.yml").write_text("explained:\n  - {rule: apkid.packer, location: \"*\", reason: r8}\n")
+    with pytest.raises(ValueError):
+        prof.load("T/r", root)
 
 
-def test_results_comment_round_trip():
-    rows = {"R/x@v1": {"outcome": "refused", "reason": "code", "report": "https://r/1"},
-            "R/x@v2": {"outcome": "approved", "reason": "clean", "report": "https://r/2"}}
-    assert batch.parse_results_comment(batch.results_comment("R/x", rows)) == {
-        "R/x@v1": {"outcome": "refused", "reason": "code", "report": "https://r/1"},
-        "R/x@v2": {"outcome": "approved", "reason": "", "report": "https://r/2"}}
+def test_explained_findings_drop_to_info_and_stay_visible():
+    from review.findings import apply_explained
+    p = _profile(explained=[{"rule": "apkid.packer", "location": "a.apk", "reason": "R8", "source": "https://t/1"}])
+    out = apply_explained([Finding("apk", "apkid.packer", "critical", "Packer.", location="a.apk"),
+                           Finding("apk", "apkid.packer", "critical", "Packer.", location="b.apk")], p)
+    assert out[0].severity == "info" and "Explained: R8 (https://t/1)" in out[0].title
+    assert out[1].severity == "critical"
+
+
+def test_code_outcome_carries_an_issue_draft_and_the_client_cannot_write():
+    from review import report
+    from review.gh import GitHub
+    d = decide.decide(_rec([BAD]), _rec([BAD]))
+    d["reportUrl"] = "https://run/1"
+    draft = report.issue_draft(d)
+    assert draft["repo"] == "Droidtop/tracker" and draft["labels"] == ["build-review"]
+    assert BAD.fingerprint in draft["body"] and "Owning repo: T/r" in draft["body"]
+    with pytest.raises(RuntimeError):
+        GitHub("x")._req("POST", "/repos/Droidtop/tracker/issues", {})
 
 
 # --- whole pipeline, with the real analysers --------------------------------

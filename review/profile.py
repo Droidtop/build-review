@@ -35,6 +35,9 @@ class Profile:
     secrets_ignore: list[str] = field(default_factory=list)  # gitleaks fingerprints with reason in comment
     block: list[str] = field(default_factory=list)        # rules that block for this repo
     dynamic: dict = field(default_factory=dict)           # {package, monkey_events, skip_reason}
+    api_callers_ok: dict = field(default_factory=dict)    # {category: {class prefix: reason}}
+    explained: list[dict] = field(default_factory=list)   # [{rule, location, reason, source}]
+    reasons: dict = field(default_factory=dict)           # every entry's stated reason, for the report
     known: bool = True                                    # False: no profile written yet
 
     def host_ok(self, host: str) -> bool:
@@ -43,6 +46,14 @@ class Profile:
 
     def lib_ok(self, name: str) -> bool:
         return any(fnmatch.fnmatch(name, g) for g in self.native_libs)
+
+    def explanation(self, rule: str, location: str) -> dict | None:
+        """A finding the owning lane has explained. Exact rule, and the
+        location as a glob; it must cite where the explanation was given."""
+        for e in self.explained:
+            if e.get("rule") == rule and fnmatch.fnmatch(location, e.get("location", "")) and e.get("source"):
+                return e
+        return None
 
     def entry_for(self, asset: str) -> dict:
         for a in self.artefacts:
@@ -80,6 +91,19 @@ def load(repo: str, root: Path = ROOT) -> Profile:
             data[k] = v + data[k]
         else:
             data.setdefault(k, v)
+    # Entries are either a list or a {name: reason} map (the lanes write
+    # maps, so every line carries its reason). A reason starting "TO
+    # IDENTIFY" is no reason: that entry stays a finding.
+    reasons: dict = {}
+    for key in ("permissions", "plugin_permissions", "api", "hosts", "native_libs", "exported_ok"):
+        v = data.get(key)
+        if isinstance(v, dict):
+            reasons[key] = {k: str(r) for k, r in v.items()}
+            data[key] = [k for k, r in v.items() if not str(r).upper().startswith("TO IDENTIFY")]
+    for e in data.get("explained", []) or []:
+        if not (e.get("rule") and e.get("location") and e.get("reason") and e.get("source")):
+            raise ValueError(f"{repo}: an explained entry needs rule, location, reason and source: {e}")
+    data["reasons"] = reasons
     data["hosts"] = list(COMMON_HOSTS) + list(data.get("hosts", []))
     data.setdefault("repo", repo)
     return Profile(**data)

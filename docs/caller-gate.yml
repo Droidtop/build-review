@@ -23,8 +23,7 @@ jobs:
       # or gate (an unsignable build is not signed).
       mode: ${{ vars.BUILD_REVIEW_MODE || 'report' }}
       harness-ref: v1
-    secrets:
-      BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}   # never `secrets: inherit`
+    # No secrets: the review takes none (never `secrets: inherit`).
 
   sign:
     needs: [build, review]

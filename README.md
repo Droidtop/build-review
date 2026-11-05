@@ -24,7 +24,12 @@ may be signed.
 | 1. Review | Every artefact goes through the static analysers. The dynamic run follows where it applies. | `review-release.yml` jobs `static`, `dynamic` |
 | 2. Findings? | Rebuild from the same commit, with no secrets, and review the rebuild the same way. | jobs `rebuild`, `review-rebuild` |
 | 3. Decide | **approved**, **rebuilt** or **refused** (with a reason). | job `decide`, `review/decide.py` |
-| 4. Fix in code | If the rebuild has the same findings, the harness files a Droidtop/tracker issue (label `build-review`) with the evidence. The owning lane fixes the code, and the fixed build goes through this same loop. | `python -m review file-issue` |
+| 4. Fix in code | If the rebuild has the same findings, the decision carries an issue draft: the owning repo, the release, the fingerprints and the evidence. The coordinator files it on Droidtop/tracker (label `build-review`). The owning lane fixes the code, and the fixed build goes through this same loop. | `issueDraft` in the decision and the results |
+
+The harness never writes to the tracker, and it has no token of its own
+(owner, 2026-11-05: "Drop the token, file the issues yourself"). Everything
+it reads is public. It reaches GitHub through the run's own `GITHUB_TOKEN`,
+and its GitHub client refuses anything but a read.
 
 The outcome for each release:
 
@@ -32,20 +37,25 @@ The outcome for each release:
 |---|---|---|---|
 | approved | clean | No blocking finding. | yes, as built |
 | rebuilt | build | The published build had blocking findings and the rebuild from its commit has none, so the published build was the problem. | yes, **the rebuild** (`sign-artifact`) |
-| refused | code | The rebuild has the same findings, so the issue is in the code. An issue is filed. | no, the fixed release is |
+| refused | code | The rebuild has the same findings, so the issue is in the code. The coordinator files the issue from the draft. | no, the fixed release is |
 | refused | rebuild-differs | Both builds have blocking findings, but different ones: the build is not reproducible enough to tell the build from the code. | no |
 | refused | not-rebuildable | Findings, and no rebuild: no source at the commit, no build command, or the build failed. | no |
 | refused | unreviewable | An analyser could not run, the dynamic run was needed and didn't finish, or the repo has no profile. "Releases that fail, or can't be reviewed, aren't re-signed." | no |
 
-Every refused release is listed for the owner: in the inventory's tick, in
-the per-repo results comment, and in `build-review-results.json`.
+Every refused release is listed for the owner in `build-review-results.json`
+and in its run's report.
 
 ### What blocks
 
 Findings are graded info / low / medium / high / critical. **High and
 critical block.** Medium and below go into the report and do not block. A
-repo's profile can raise single rules to blocking (`block:`). It can never
-lower a high or critical finding.
+repo's profile can raise single rules to blocking (`block:`). The only way
+to lower a finding is to mark it explained. An `explained:` entry names one
+rule and a location glob, and must give its reason and the tracker comment
+the owning lane gave it in. The finding then drops to info, but stays in
+the report marked "Explained: <reason> (<source>)", so an explanation is
+never invisible. Profiles can also allow one category for named callers only
+(`api_callers_ok`), leaving it a finding for every other caller.
 
 "Same findings" means the same fingerprint. A fingerprint is the analyser,
 the rule and the location, with versions, build numbers and hashes taken
@@ -114,9 +124,12 @@ not listed is unexpected.
   That is deliberate: without a stated purpose nothing can be judged. Each
   owning lane writes its own repo's profile. A profile change is reviewed
   like code, because it widens what a build may do.
-- Today only `Droidtop/droidtop` has one, a pilot draft taken from main's
-  manifests at 8b447d7. The droidtop lane confirms it against
-  `docs/SPEC.md`.
+- Entries can be a list or a `name: reason` map. A reason starting
+  "TO IDENTIFY" is no reason: that entry stays a finding.
+- Today only `Droidtop/droidtop` has one. Its permissions, exported
+  components and native libraries are the droidtop lane's
+  (Droidtop/tracker#550, 2026-11-05). Its endpoints are still the harness
+  lane's draft.
 
 ## Rebuilds
 
@@ -143,14 +156,13 @@ review:
   needs: build
   uses: Droidtop/build-review/.github/workflows/review-release.yml@v1
   with: {release: "build-${{ github.run_number }}", source: artifact, artifact-name: unsigned, mode: gate}
-  secrets: {BUILD_REVIEW_TOKEN: "${{ secrets.BUILD_REVIEW_TOKEN }}"}
 sign:
   needs: review
   if: needs.review.outputs.sign == 'true'
   # sign needs.review.outputs.sign-artifact
 ```
 
-Pass only `BUILD_REVIEW_TOKEN`, never `secrets: inherit`. Three modes:
+The review takes no secrets: pass none, and never `secrets: inherit`. Three modes:
 
 - `gate`: the review job fails unless the outcome is approved or rebuilt,
   so an unsignable build is not signed.
@@ -159,8 +171,9 @@ Pass only `BUILD_REVIEW_TOKEN`, never `secrets: inherit`. Three modes:
   the run's summary. Callers take the mode from one variable,
   `vars.BUILD_REVIEW_MODE` (default `report`), so the owner switches every
   repo to `gate` at once.
-- `audit`: the batch runner's mode. It records the outcome and carries on. Repos whose
-build job signs inline (droidtop's `android-build.yml`, for example) must
+- `audit`: the batch runner's mode. It records the outcome and carries on.
+
+Repos whose build job signs inline (droidtop's `android-build.yml`, for example) must
 first move signing into a job of its own. That change belongs to the lane
 and the coordinator, not to this repo.
 
@@ -170,32 +183,27 @@ and the coordinator, not to this repo.
 re-audit the releases signed under the exposed chain: "No, we're not gonna
 retest this time. This wasn't a key theft, it was an exposure in a secure
 environment". So the backlog in #876 is not run. The runner exists for the
-next revocation, and for a pilot dry run (`limit: 1`). It reads the inventory issue (default Droidtop/tracker#876)
-from its body and its continuation comments, carrying the `### owner/repo`
-heading across. It takes the unticked lines that match `repos` and `tags`, up
-to `limit` (256 at most per run), and reviews each in audit mode. Then it:
+next revocation, and for a pilot dry run (`limit: 1`).
 
-- ticks each line with its outcome and a link to its report, keeping the
-  signer evidence as written:
-  `- [x] \`build-130\` 2026-10-31 | sha256 list only — **refused** (code), [report](…)`.
-  The inventory sits near GitHub's 65,536-character limit, so a line carries
-  its link only while its part has room. Past that the tick carries the
-  outcome alone.
-- keeps one results comment per repo on the inventory, with every release,
-  its outcome and its report link, whether or not the line had room;
-- writes `build-review-results.json` and attaches it to this repo's
-  `audit-results` release.
-
-Its `dry-run` input is on by default. A dry run reviews the releases but
-ticks nothing, files nothing and publishes nothing.
+It only reads the inventory issue (default Droidtop/tracker#876): its body
+and continuation comments, carrying the `### owner/repo` heading across. It
+takes the unticked lines that match `repos` and `tags`, up to `limit` (256
+at most per run), and reviews each in audit mode. It writes nothing back to
+the inventory. The results are `build-review-results.json`, the run's
+artifact. When `dry-run` is off, the file is also attached to this repo's
+`audit-results` release. `dry-run` is on by default.
 
 ### Publishing with the catalog
 
 `build-review-results.json` (`schema: droidtop.build-review-results/1`)
-lists every release with its outcome, reason, report link, artefact hashes,
-any filed issue, and the rebuilt artefacts. The coordinator publishes it
-with the catalog, beside the revocation list, at signing time. The harness
-doesn't write to `droidtop-components`, because the catalog is signed.
+lists every release with its outcome, reason, summary, report link,
+artefact hashes and rebuilt artefacts. For a `code` outcome it also lists
+the blocking fingerprints, the findings with their evidence, and an
+`issueDraft` (`repo`, `title`, `body`, `labels`). `toFile` lists the
+releases whose drafts the coordinator files on Droidtop/tracker. The
+coordinator also publishes the file with the catalog, beside the
+revocation list, at signing time. The harness writes neither the tracker
+nor `droidtop-components`.
 
 ### Locally
 
@@ -220,16 +228,10 @@ python -m pytest -q tests
 - **This repo, public.** Reusable workflows can be called across
   organisations (Droidtop and gamegrab-sources) only from a public repo.
   Callers pin `@v1`, a tag on a reviewed commit.
-- **`BUILD_REVIEW_TOKEN`** (optional; the owner's, pending): contents:read
-  on every repo in the inventory and issues:write on Droidtop/tracker. It is
-  set as a secret here, for the batch runner, and in each calling repo, and
-  it is never a signing secret. Without it, everything still runs on the
-  run's own token, which reads public repos, releases and the tracker. Only
-  writing to the tracker is skipped, with a warning: filed issues, and the
-  batch runner's ticks, which then run as a dry run. Private repos need the
-  token.
+- No token. Every repo the harness reads is public (owner, 2026-11-05).
 - A `v1` tag on the reviewed commit that callers pin.
-- A `build-review` label on Droidtop/tracker (exists).
+- A `build-review` label on Droidtop/tracker, for the issues the coordinator
+  files (it exists).
 
 ## Limits, stated
 
@@ -241,7 +243,7 @@ python -m pytest -q tests
 - Grype needs its database host (`grype.anchore.io`). Without it the review
   is unreviewable, not passed.
 - A release with no reviewable asset (the inventory marks some
-  `droidtop-agent` builds "sha256 list only") makes `fetch` fail. Its line
-  stays unticked rather than being marked refused, so that a network failure
-  is never recorded as an outcome. Such releases need their artefacts found
+  `droidtop-agent` builds "sha256 list only") makes `fetch` fail. It gets
+  no outcome rather than being marked refused, so that a network failure is
+  never recorded as one. Such releases need their artefacts found
   first.

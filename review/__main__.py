@@ -124,12 +124,17 @@ def cmd_decide(a):
     d["reportUrl"] = a.report_url or ""
     d["runUrl"] = a.run_url or ""
     d["reviewedAt"] = (rebuild or original).get("generatedAt", "")
+    if d["reason"] == "code":
+        # The harness never writes to the tracker (owner, 2026-11-05: "Drop
+        # the token, file the issues yourself"); the coordinator files the
+        # build-review issue from this draft in the results.
+        d["issueDraft"] = report.issue_draft(d)
     _w(a.out, d)
     Path(a.markdown).write_text(report.markdown(original, d, a.run_url or "") +
                                 ("\n---\n\n" + report.markdown(rebuild, None) if rebuild else ""))
     _out("outcome", d["outcome"])
     _out("reason", d["reason"])
-    _out("needs_issue", str(d["reason"] == "code").lower())
+
     print(d["summary"])
     if a.gate and not dec.gate_passes(d):
         sys.exit(f"build review gate: {d['outcome']} ({d['reason']})")
@@ -137,31 +142,6 @@ def cmd_decide(a):
 
 def cmd_needs_rebuild(a):
     _out("rebuild", str(dec.needs_rebuild(_r(a.record))).lower())
-
-
-def cmd_file_issue(a):
-    """File (or find) the tracker issue for a code finding."""
-    from .gh import GitHub
-
-    gh = GitHub()
-    d = _r(a.decision)
-    if d.get("reason") != "code":
-        return
-    marker = f"repo={d['repo']} fingerprints="
-    fps = set(d.get("fingerprints", []))
-    for iss in gh.open_issues(a.tracker, "build-review"):
-        body = iss.get("body") or ""
-        if marker in body and fps and all(f in body for f in fps):
-            d["issue"] = iss["html_url"]
-            _w(a.decision, d)
-            _out("issue", iss["html_url"])
-            return
-    title = f"{d['repo'].split('/')[-1]}: build review finds {len(fps)} issue(s) in the code ({d['release']})"
-    iss = gh.create_issue(a.tracker, title, report.issue_body(d, None, None, d.get("reportUrl") or a.report_url),
-                          ["build-review"])
-    d["issue"] = iss["html_url"]
-    _w(a.decision, d)
-    _out("issue", iss["html_url"])
 
 
 def cmd_batch_plan(a):
@@ -179,64 +159,21 @@ def cmd_batch_plan(a):
     _out("count", str(len(matrix)))
 
 
-def cmd_batch_tick(a):
-    from .gh import GitHub
-
-    gh = GitHub()
-    owner_repo, num = a.inventory.split("#")
-    results = {}
-    for f in Path(a.results).rglob("decision.json"):
-        d = _r(f)
-        results[f"{d['repo']}@{d['release']}"] = {"outcome": d["outcome"], "reason": d["reason"],
-                                                   "report": d.get("reportUrl", ""),
-                                                   "reviewedAt": d.get("reviewedAt", "")}
-    if not results:
-        print("nothing to tick")
-        return
-    # The per-repo results comments: every link, whether or not the line had room.
-    comments = gh.comments(owner_repo, int(num))
-    by_repo: dict[str, dict] = {}
-    for k, v in results.items():
-        by_repo.setdefault(k.split("@")[0], {})[k] = v
-    for repo, rows in by_repo.items():
-        mark = batch.RESULTS_MARK.format(repo=repo)
-        existing = next((c for c in comments if mark in (c.get("body") or "")), None)
-        merged = {**(batch.parse_results_comment(existing["body"]) if existing else {}), **rows}
-        body = batch.results_comment(repo, merged)
-        if a.dry_run:
-            print(body)
-        elif existing:
-            gh.edit_comment(owner_repo, existing["id"], body)
-        else:
-            gh._req("POST", f"/repos/{owner_repo}/issues/{num}/comments", {"body": body})
-    total = 0
-    for source, text, cid, repo in batch.load_inventory(gh, owner_repo, int(num), a.comments):
-        new, n, linkless = batch.tick(text, results, repo)
-        total += n
-        if n and not a.dry_run:
-            if cid is None:
-                gh.edit_issue_body(owner_repo, int(num), new)
-            else:
-                gh.edit_comment(owner_repo, cid, new)
-        if linkless:
-            print(f"{source}: {len(linkless)} line(s) ticked without their link (no room); "
-                  "their links are in the results comments")
-    print(f"ticked {total} line(s){' (dry run)' if a.dry_run else ''}")
-
-
 def cmd_publish(a):
     """The audit results, published with the catalog beside the revocation list."""
     entries = []
     for f in sorted(Path(a.results).rglob("decision.json")):
         d = _r(f)
-        entries.append({k: d.get(k) for k in ("repo", "release", "commit", "outcome", "reason", "reportUrl",
-                                              "issue", "artefacts", "rebuiltArtefacts", "reviewedAt") if d.get(k)})
+        entries.append({k: d.get(k) for k in ("repo", "release", "commit", "outcome", "reason", "summary",
+                                              "reportUrl", "artefacts", "rebuiltArtefacts", "fingerprints",
+                                              "findings", "issueDraft", "reviewedAt") if d.get(k)})
     prev = _r(a.merge) if a.merge and Path(a.merge).exists() else {"entries": []}
     keyed = {f"{e['repo']}@{e['release']}": e for e in prev.get("entries", [])}
     keyed.update({f"{e['repo']}@{e['release']}": e for e in entries})
     out = {"schema": "droidtop.build-review-results/1", "event": a.event, "policy": "Droidtop/tracker#550",
            "entries": sorted(keyed.values(), key=lambda e: (e["repo"], e["release"]))}
     out["counts"] = {o: sum(1 for e in out["entries"] if e["outcome"] == o) for o in batch.OUTCOMES}
+    out["toFile"] = [f"{e['repo']}@{e['release']}" for e in out["entries"] if e.get("issueDraft")]
     _w(a.out, out)
     print(json.dumps(out["counts"]))
 
@@ -272,22 +209,12 @@ def main(argv=None):
     s.add_argument("--report-url"); s.add_argument("--run-url"); s.add_argument("--gate", action="store_true")
     s.set_defaults(f=cmd_decide)
 
-    s = sub.add_parser("file-issue")
-    s.add_argument("--decision", required=True); s.add_argument("--tracker", default="Droidtop/tracker")
-    s.add_argument("--report-url", default="")
-    s.set_defaults(f=cmd_file_issue)
-
     s = sub.add_parser("batch-plan")
     s.add_argument("--inventory", required=True, help="owner/repo#number")
     s.add_argument("--repos", default="*"); s.add_argument("--tags", default="*")
     s.add_argument("--limit", type=int, default=0); s.add_argument("--redo", action="store_true")
     s.add_argument("--comments", type=int, default=2)
     s.set_defaults(f=cmd_batch_plan)
-
-    s = sub.add_parser("batch-tick")
-    s.add_argument("--inventory", required=True); s.add_argument("--results", required=True)
-    s.add_argument("--comments", type=int, default=2); s.add_argument("--dry-run", action="store_true")
-    s.set_defaults(f=cmd_batch_tick)
 
     s = sub.add_parser("publish")
     s.add_argument("--results", required=True); s.add_argument("--out", required=True)

@@ -166,7 +166,12 @@ def _androguard(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
             exported = item.get(ns + "exported")
             has_filter = item.find("intent-filter") is not None
             if exported == "true" or (exported is None and has_filter):
-                if item.get(ns + "permission"):
+                guards = [item.get(ns + "permission")]
+                if tag == "provider":
+                    # A provider is guarded by readPermission and
+                    # writePermission too; both must be set to count.
+                    guards.append(item.get(ns + "readPermission") and item.get(ns + "writePermission"))
+                if any(guards):
                     continue
                 is_launcher = any(c.get(ns + "name") == "android.intent.category.LAUNCHER"
                                   for f in item.iter("intent-filter") for c in f.iter("category"))
@@ -186,7 +191,7 @@ def _androguard(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
                 callers = [f"{c.name}->{mm.name}" for c, mm, _o in m.get_xref_from()]
                 callers = [c for c in callers if not c.startswith(("Landroidx/", "Lkotlin/", "Landroid/"))]
                 if callers:
-                    used.setdefault(cat, []).extend(callers[:5])
+                    used.setdefault(cat, []).extend(callers)
 
     strings = [s.get_value() for s in dx.get_strings()]
     if any(SU_RE.search(s) for s in strings):
@@ -204,6 +209,13 @@ def _androguard(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
                     if code is not None and code.get_length() <= 2:
                         used.setdefault("trust-all-tls", []).append(cls.name)
 
+    # Callers the profile names, each with its reason, don't count: the
+    # category still counts for any other caller.
+    for cat, ok in (profile.api_callers_ok or {}).items():
+        if cat in used:
+            used[cat] = [c for c in used[cat] if not any(c.startswith(p) for p in ok)]
+            if not used[cat]:
+                del used[cat]
     facts["apiCategories"] = sorted(used)
     for cat, where in sorted(used.items()):
         if cat in profile.api:

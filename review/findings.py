@@ -81,6 +81,19 @@ def raise_severity(findings: Iterable[Finding], rules: Iterable[str], to: str = 
     return out
 
 
+def apply_explained(findings: Iterable[Finding], profile) -> list[Finding]:
+    """Findings the owning lane has explained (profile `explained:`, each
+    with its reason and the tracker comment it was given in) drop to info.
+    They stay in the report, marked, so an explanation is never invisible."""
+    out = []
+    for f in findings:
+        e = profile.explanation(f.rule, f.location)
+        if e and f.category != "harness":
+            f = dataclasses.replace(f, severity="info", title=f"{f.title} Explained: {e['reason']} ({e['source']})")
+        out.append(f)
+    return out
+
+
 def blocking_set(findings: Iterable[Finding]) -> set[str]:
     return {f.fingerprint for f in findings if f.blocking}
 

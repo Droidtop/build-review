@@ -5,15 +5,14 @@ name: Build review
 #   1. review the built artefacts (static always; dynamic where it applies)
 #   2. findings: rebuild from the same commit and review the rebuild
 #   3. decide: approved | rebuilt | refused (with a reason)
-#   4. a finding in the code files a tracker issue with the evidence
+#   4. a finding in the code: the decision carries an issue draft with the
+#      evidence, for the coordinator to file
 #
-# It never signs, revokes or reads a signing secret. Callers pass only
-# BUILD_REVIEW_TOKEN, never `secrets: inherit`. The rebuild runs with no
-# secrets at all.
-#
-# BUILD_REVIEW_TOKEN is optional. Without it, the run's own token reads
-# public repos and releases, the caller's own artifacts and the tracker;
-# filing an issue is the only step skipped (with a warning).
+# It never signs, revokes or reads a signing secret, and it takes no
+# secrets: callers pass none (never `secrets: inherit`). Everything it reads
+# is public, through the run's own token. It never writes to the tracker
+# (owner, 2026-11-05: "Drop the token, file the issues yourself"). The
+# rebuild runs with no secrets at all.
 #
 # Two ways in:
 #   source: artifact  the standing gate. A build job in the same run uploads
@@ -56,20 +55,10 @@ on:
           rolling the gate out) | audit (the batch runner's: record the outcome and carry on)
         type: string
         default: gate
-      file-issues:
-        type: boolean
-        default: true
-      tracker:
-        type: string
-        default: Droidtop/tracker
       harness-ref:
         description: Ref of Droidtop/build-review to run (the same one the caller's `uses:` names).
         type: string
         default: v1
-    secrets:
-      BUILD_REVIEW_TOKEN:
-        description: Read on the repos under review, issues write on the tracker. Never a signing secret.
-        required: false
     outputs:
       outcome:
         value: ${{ jobs.decide.outputs.outcome }}
@@ -124,13 +113,13 @@ jobs:
         if: inputs.source == 'release'
         id: fetch
         env:
-          BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: python -m review fetch --repo "$REPO" --tag "${{ inputs.release }}" --out work/artefacts --previous-out work/previous
       - name: Previous release (gate)
         if: inputs.source == 'artifact'
         id: prev
         env:
-          GH_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
           PREV: ${{ inputs.previous-release }}
         run: |
           tag="${PREV:-$(gh release list -R "$REPO" --limit 1 --exclude-drafts --json tagName -q '.[0].tagName' || true)}"
@@ -150,7 +139,7 @@ jobs:
           repository: ${{ env.REPO }}
           ref: ${{ steps.commit.outputs.commit }}
           path: work/source
-          token: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
+          token: ${{ github.token }}
           persist-credentials: false
           fetch-depth: 1
       - name: Review the previous release (for the diff)
@@ -255,7 +244,7 @@ jobs:
           ref: ${{ needs.static.outputs.commit }}
           path: src
           submodules: ${{ steps.profile.outputs.submodules || 'false' }}
-          token: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
+          token: ${{ github.token }}
           persist-credentials: false
       # Toolchains. The repo's own setup action is the one its build used at
       # that commit, so an old release is rebuilt with its own toolchain.
@@ -393,13 +382,6 @@ jobs:
           [ -n "$REBUILD_ERROR" ] && args+=(--rebuild-error "$REBUILD_ERROR")
           python -m review decide "${args[@]}"
           cat out/report.md >> "$GITHUB_STEP_SUMMARY"
-      - name: File the issue (the code is the problem)
-        if: steps.decide.outputs.needs_issue == 'true' && inputs.file-issues
-        env:
-          BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}
-        run: |
-          if [ -z "$BUILD_REVIEW_TOKEN" ]; then echo "::warning::no BUILD_REVIEW_TOKEN: issue not filed"; exit 0; fi
-          python -m review file-issue --decision out/decision.json --tracker "${{ inputs.tracker }}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: review-decision-${{ needs.static.outputs.key }}

@@ -17,7 +17,7 @@ from pathlib import Path
 from . import __version__
 from .analysers import apk, behaviour, content, manifests, native
 from .extract import extract, kind_of, sha256
-from .findings import Finding, blocking_set, raise_severity
+from .findings import Finding, apply_explained, blocking_set, raise_severity
 from .profile import Profile
 
 RULES = Path(__file__).resolve().parent.parent / "rules"
@@ -49,6 +49,7 @@ def review_release(artefacts: list[Path], profile: Profile, *, repo: str, releas
     changes, diff_findings = behaviour.diff(facts, previous, profile)
     findings += diff_findings
     findings = raise_severity(findings, profile.block)
+    findings = apply_explained(findings, profile)
     findings = _dedupe(findings)
 
     needs_dynamic = any(a["kind"] in DYNAMIC_KINDS for a in listed) or any(

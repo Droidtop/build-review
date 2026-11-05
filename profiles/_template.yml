@@ -42,6 +42,10 @@ obfuscation_ok: false        # true only for an R8/ProGuard-style rename the lan
 cve_ignore: {}               # {CVE-id: reason}
 secrets_ignore: []           # gitleaks fingerprints, each with its reason in a comment
 block: []                    # rule ids that block for this repo even below high
+# Lists can instead be {name: reason} maps; a reason "TO IDENTIFY ..." keeps
+# the entry a finding.
+api_callers_ok: {}           # {category: {"Lclass/prefix;": reason}}: allowed for these callers only
+explained: []                # [{rule, location (glob), reason, source (tracker comment URL)}]: drops to info, stays in the report
 dynamic:
   monkey_events: 600
   # skip_reason: "only when a run can't apply (no runnable code)"

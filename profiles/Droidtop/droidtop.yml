@@ -1,6 +1,10 @@
-# droidtop: the pilot profile. Draft, derived from main's manifests and
-# sources at 8b447d7 (2026-11-04); the droidtop lane confirms each line
-# against docs/SPEC.md before the pilot's results count.
+# droidtop's review profile. permissions, exported_ok and native_libs are
+# the droidtop lane's, read from the merged manifest and lib/ of
+# v0.2.0-dev.2898 and checked against droidtop main 60cc0ea24, each with
+# its reason (https://github.com/Droidtop/tracker/issues/550#issuecomment-6647163484).
+# api, api_callers_ok and explained follow that comment's explanations.
+# hosts is still the harness lane's draft, from main's sources at
+# 8b447d7; the droidtop lane has not confirmed it yet.
 repo: Droidtop/droidtop
 purpose: >
   An Android frontend for handhelds: a gaming shell, a standard launcher and
@@ -19,67 +23,180 @@ build:
   # SIGNING_KEYSTORE_PATH is unset, so a rebuild needs no signing material.
   command: ./gradlew :app:assembleRelease --stacktrace
   outputs: ["app/build/outputs/apk/release/*.apk"]
+
 permissions:
-  - android.permission.INTERNET                     # stores, metadata, downloads
-  - android.permission.ACCESS_NETWORK_STATE
-  - android.permission.ACCESS_WIFI_STATE
-  - android.permission.CHANGE_WIFI_MULTICAST_STATE  # finding paired computers on the LAN
-  - android.permission.ACCESS_COARSE_LOCATION       # Wi-Fi SSID for LAN pairing (Android requires it)
-  - android.permission.ACCESS_FINE_LOCATION         # same
-  - android.permission.BLUETOOTH                    # controllers
-  - android.permission.BLUETOOTH_CONNECT
-  - android.permission.FOREGROUND_SERVICE           # downloads, plugin services
-  - android.permission.FOREGROUND_SERVICE_SPECIAL_USE
-  - android.permission.FOREGROUND_SERVICE_DATA_SYNC
-  - android.permission.POST_NOTIFICATIONS
-  - android.permission.MANAGE_EXTERNAL_STORAGE      # reading game folders in place (never copying them)
-  - android.permission.READ_EXTERNAL_STORAGE
-  - android.permission.WRITE_EXTERNAL_STORAGE
-  - android.permission.QUERY_ALL_PACKAGES           # the launcher lists every app
-  - android.permission.PACKAGE_USAGE_STATS          # recents in the launcher
-  - android.permission.REQUEST_INSTALL_PACKAGES     # installing emulators and its own updates
-  - android.permission.REQUEST_DELETE_PACKAGES
-  - android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION
-  - android.permission.SYSTEM_ALERT_WINDOW          # the Quick Menu over games
-  - android.permission.WRITE_SETTINGS               # brightness and rotation from the Quick Menu
-  - android.permission.ACCESS_NOTIFICATION_POLICY   # do-not-disturb while playing
-  - android.permission.RECORD_AUDIO                 # windowcast voice and mic passthrough
-  - android.permission.CAMERA                       # QR pairing
-  - android.permission.REORDER_TASKS
-  - android.permission.KILL_BACKGROUND_PROCESSES
-  - android.permission.RECEIVE_BOOT_COMPLETED
-  - android.permission.WAKE_LOCK
-  - android.permission.VIBRATE
-  - android.permission.MODIFY_AUDIO_SETTINGS
-  - android.permission.EXPAND_STATUS_BAR
-  - android.permission.SET_WALLPAPER
-  - android.permission.SET_WALLPAPER_HINTS
-  - android.permission.BIND_APPWIDGET               # launcher widgets
-  - android.permission.ACCESS_HIDDEN_PROFILES
-  - android.permission.READ_USER_DICTIONARY         # input-keyboard
-  - android.permission.WRITE_USER_DICTIONARY
-  - android.permission.READ_DEVICE_CONFIG
-  - android.permission.LOCK_APPS
-  - android.permission.ROTATE_SURFACE_FLINGER       # dual-display handling
-  - android.permission.WAKEUP_SURFACE_FLINGER
-  - com.droidtop.permission.READ_SETTINGS
-  - com.droidtop.permission.WRITE_SETTINGS
-  - moe.shizuku.manager.permission.API_V23          # Shizuku, non-root
+  android.permission.INTERNET: "Sources, stores, downloads, updates, plugins (SPEC 12a; app/, net-core manifests)"
+  android.permission.ACCESS_NETWORK_STATE: "Download policy: Wi-Fi only, metered networks (SPEC 12a, net-core DownloadPolicy)"
+  android.permission.ACCESS_WIFI_STATE: "The network a download runs on; the Wi-Fi name row (app manifest comment)"
+  android.permission.ACCESS_FINE_LOCATION: "Android's price for reading the Wi-Fi name; asked only from that row, marked not recommended (app manifest)"
+  android.permission.ACCESS_COARSE_LOCATION: "Paired with FINE for the same Wi-Fi-name row (app manifest)"
+  android.permission.CHANGE_WIFI_MULTICAST_STATE: "Pairing a computer: found by LAN broadcast while the pairing screen is open (SPEC 7o)"
+  android.permission.BLUETOOTH: "Companion Connections card lists paired devices; maxSdkVersion 30 (app manifest)"
+  android.permission.BLUETOOTH_CONNECT: "Same card on API 31+; asked when it first opens (app manifest)"
+  android.permission.FOREGROUND_SERVICE: "Desktop session, downloads and jobs keep running (app manifest, DesktopSessionService)"
+  android.permission.FOREGROUND_SERVICE_SPECIAL_USE: "DesktopSessionService's specialUse type on API 34+ (app manifest)"
+  android.permission.FOREGROUND_SERVICE_DATA_SYNC: "Windows runtime component downloads (runtime-windows manifest)"
+  android.permission.POST_NOTIFICATIONS: "Foreground-service notification, job and update notices (app manifest)"
+  android.permission.RECEIVE_BOOT_COMPLETED: "Launcher3 fork restores its state; scheduled update checks (shell-default, app)"
+  android.permission.WAKE_LOCK: "Desktop mode keeps the screen awake; downloads (SPEC 6b 'Desktop keeps the screen awake')"
+  android.permission.VIBRATE: "On-screen keyboard key feedback (input-keyboard manifest)"
+  android.permission.RECORD_AUDIO: "Desktop's Microphone row only (SPEC 3d) and offline voice typing (Droidtop/tracker#343)"
+  android.permission.MODIFY_AUDIO_SETTINGS: "Audio output switching and volume rows (SPEC 7j Quick Menu)"
+  android.permission.ACCESS_NOTIFICATION_POLICY: "Do not disturb control; the person grants it on Android's screen (app manifest, SystemControls.dndGrantIntent)"
+  android.permission.PACKAGE_USAGE_STATS: "Optional: Apps view's Recently used filter; granted in system settings (app manifest)"
+  android.permission.QUERY_ALL_PACKAGES: "A launcher lists every installed app (shell-default, Launcher3; SPEC 2c Mobile)"
+  android.permission.REQUEST_INSTALL_PACKAGES: "droidtop's own updates and app sources' installs (app manifest, SPEC 10b)"
+  android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION: "Self-update skips the dialog only when Android judges droidtop its installer of record (app manifest)"
+  android.permission.REQUEST_DELETE_PACKAGES: "Uninstall from the launcher (shell-default, Launcher3)"
+  android.permission.KILL_BACKGROUND_PROCESSES: "End an emulator's leftover process before relaunch, no root (library-core manifest, ConsoleRomProvider)"
+  android.permission.REORDER_TASKS: "Bring the shell's task back so the pad stays with it (app manifest, SPEC 4c, ForegroundShell.installPadReturn)"
+  android.permission.SYSTEM_ALERT_WINDOW: "Overlays over games: Quick Menu, HOME combos (SPEC 7j, Droidtop/tracker#740)"
+  android.permission.MANAGE_EXTERNAL_STORAGE: "Game folders anywhere on shared storage; never copies a person's games (SPEC 7g, AGENTS rule)"
+  android.permission.READ_EXTERNAL_STORAGE: "Same, before API 30 (app manifest)"
+  android.permission.WRITE_EXTERNAL_STORAGE: "Same, before API 30 (app manifest)"
+  android.permission.SET_WALLPAPER: "Launcher wallpaper picker (shell-default, SPEC 2c Wallpaper)"
+  android.permission.SET_WALLPAPER_HINTS: "Launcher3 wallpaper sizing (shell-default)"
+  android.permission.BIND_APPWIDGET: "Widgets on the home screen (SPEC 2c Widgets, Droidtop/tracker#563)"
+  android.permission.EXPAND_STATUS_BAR: "Launcher3 swipe-down gesture opens notifications (shell-default)"
+  android.permission.WRITE_SETTINGS: "Launcher3 parity; brightness and rotation rows where granted (shell-default)"
+  android.permission.READ_USER_DICTIONARY: "On-screen keyboard suggestions (input-keyboard manifest)"
+  android.permission.WRITE_USER_DICTIONARY: "Same, adding words (input-keyboard manifest)"
+  android.permission.ACCESS_HIDDEN_PROFILES: "Launcher3 parity (private space); signature-level, not granted to droidtop (shell-default)"
+  android.permission.LOCK_APPS: "Launcher3 parity; signature-level, not granted (shell-default)"
+  android.permission.READ_DEVICE_CONFIG: "Launcher3 parity; signature-level, not granted (shell-default)"
+  android.permission.ROTATE_SURFACE_FLINGER: "Launcher3 parity; signature-level, never granted to a normal install (shell-default comment)"
+  android.permission.WAKEUP_SURFACE_FLINGER: "Same (shell-default comment)"
+  moe.shizuku.manager.permission.API_V23: "Optional Shizuku bridge for granted plugins (SPEC 12a, ShizukuRelays)"
+  dev.droidtop.app.permission.READ_SETTINGS: "droidtop's own, signatureOrSystem: the launcher settings provider (shell-default)"
+  dev.droidtop.app.permission.WRITE_SETTINGS: "Same"
+  dev.droidtop.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: "Added by AndroidX core for unexported dynamic receivers"
+  # android.permission.READ_PHONE_STATE: removed (droidtop ci/manifest-review-550): implied by the merger, never used.
+
+exported_ok:
+  dev.droidtop.app.MainActivity: "The launcher's HOME/LAUNCHER entry"
+  com.android.launcher3.Launcher: "HOME entry of the Standard (Launcher3) home screen"
+  dev.droidtop.shell.standard.HomeTrampolineActivity: "HOME entry that routes to the mode in use"
+  dev.droidtop.shell.standard.AlternativeLauncherActivity: "The Alternative forwarder (SPEC 4c), disabled until chosen"
+  com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher: "Secondary-display home (SPEC 4c)"
+  dev.droidtop.display.SecondaryDisplayActivity: "Second-screen shell (SPEC 4c)"
+  dev.droidtop.app.ExternalGameLaunchActivity: "Frontends start a game in droidtop (SPEC 7, open with droidtop)"
+  dev.droidtop.app.OpenWithActivity: "Open with droidtop, disabled until the person turns it on (SPEC 4b)"
+  dev.droidtop.app.LinkActivity: "droidtop:// links (SPEC 7j Places)"
+  dev.droidtop.app.links.MarketLink: "market:// links to app sources, disabled until chosen"
+  dev.droidtop.app.links.SteamLink: "steam:// links, disabled until chosen"
+  dev.droidtop.app.links.MagnetLink: "magnet: links to Downloads, disabled until chosen"
+  dev.droidtop.app.links.FdroidrepoLink: "F-Droid repo links, disabled until chosen"
+  dev.droidtop.app.links.FdroidreposLink: "Same"
+  dev.droidtop.app.LauncherGamesActivity: "Standard mode's games screen shortcut"
+  dev.droidtop.app.ShelfConfigureActivity: "Widget configure activity (APPWIDGET_CONFIGURE)"
+  dev.droidtop.app.QuickLaunchConfigureActivity: "Widget configure activity"
+  dev.droidtop.app.PluginWidgetConfigureActivity: "Widget configure activity"
+  com.android.launcher3.widgetpicker.WidgetPickerActivity: "Behind droidtop's START_WIDGET_PICKER_ACTIVITY permission"
+  com.android.launcher3.dragndrop.AddItemActivity: "Pin shortcut/widget requests from other apps (Launcher3)"
+  com.android.launcher3.settings.SettingsActivity: "APPLICATION_PREFERENCES entry (Launcher3)"
+  dev.droidtop.pluginhost.AppInterfaceDoorService: "Door for app interface plugins; answers only an installed, approved, enabled, verified plugin's app, carries no data (plugin-api.md 1.3, Droidtop/tracker#547)"
+  com.android.launcher3.notification.NotificationListener: "Behind BIND_NOTIFICATION_LISTENER_SERVICE: notification dots"
+  org.pocketworkstation.pckeyboard.LatinIME: "Behind BIND_INPUT_METHOD: droidtop's keyboard (SPEC 6a)"
+  # dev.droidtop.app.EnginehostGameEndedReceiver: NOT ok as is (see above): exported with no permission, and its saveFolder extra is copied from
+  dev.droidtop.app.UpdateNowReceiver: "Behind android.permission.DUMP: adb/rig trigger for an update check"
+  com.android.launcher3.SessionCommitReceiver: "Launcher3: new installs added to the home screen"
+  com.android.launcher3.AppWidgetsRestoredReceiver: "Launcher3: widget restore after backup"
+  androidx.profileinstaller.ProfileInstallReceiver: "AndroidX, behind DUMP"
+  dev.droidtop.pluginhost.DroidtopShizukuProvider: "Shizuku's binder hand-off, behind INTERACT_ACROSS_USERS_FULL"
+  com.android.launcher3.LauncherProvider: "Behind signatureOrSystem READ/WRITE_SETTINGS (shell-default)"
+  com.android.launcher3.graphics.LauncherCustomizationProvider: "Behind BIND_WALLPAPER (Launcher3 grid options)"
+  # com.android.launcher3.testing.TestInformationProvider: removed (droidtop ci/manifest-review-550).
+
+native_libs:  # both ABIs, arm64-v8a and x86_64
+  libc++_shared.so: "C++ runtime for droidtop's native modules"
+  libdroidtoppy.so: "plugin-host: plugin process start, system-call filter (plugin-api.md 5.3)"
+  libdroidtopsbx.so: "Fibrewall sandbox library, vendor/sandbox (plugin-api.md 5.3)"
+  libsbx_child.so: "Fibrewall: confined child start"
+  libsbx_exec.so: "Fibrewall: exec helper"
+  libaria2engine.so: "aria2-engine, the one download engine (SPEC 12a)"
+  libaria2broker.so: "aria2-engine's file and socket broker (SPEC 12a)"
+  libconscrypt_jni.so: "Conscrypt TLS provider"
+  libcrane.so: "go-containerregistry (vendor/go-containerregistry): OCI image pulls for containers (SPEC 3, 3a)"
+  libproot.so: "proot, the no-root container backend (SPEC 3, ProotRuntime)"
+  libproot-loader.so: "proot's loader"
+  libproot-loader32.so: "proot's 32-bit guest loader (a guest binary, not a shipped 32-bit ABI)"
+  libhev-socks5-tunnel.so: "VPN and proxy tunnel (SPEC 4a)"
+  libhostbridge.so: "host-bridge module, host and container clipboard and input (SPEC 6d)"
+  libwayland-client.so: "Desktop surface: Wayland client (SPEC 2, vendor/wayland)"
+  libpulse.so: "PulseAudio for containers and Wine (vendor/pulseaudio)"
+  libpulseaudio.so: "Same"
+  libpulsecommon-13.0.so: "Same"
+  libpulsecore-13.0.so: "Same"
+  libltdl.so: "PulseAudio's module loader"
+  libsndfile.so: "PulseAudio dependency (vendor/libsndfile)"
+  libwinlator.so: "Windows runtime (runtime-windows, SPEC 5)"
+  libwinlator_11.so: "Same, newer build"
+  libvirglrenderer.so: "Windows runtime GPU path (SPEC 5)"
+  libvortekrenderer.so: "Same"
+  libvulkan_renderer.so: "Same"
+  libasurface_renderer.so: "Windows runtime presentation (runtime-windows/native/upstream/asurfacerenderer)"
+  libahbimage.so: "Same tree: AHardwareBuffer images"
+  libxconnectorpatch.so: "Windows runtime X connector (runtime-windows/native/upstream/xconnectorpatch)"
+  libhook_impl.so: "Windows runtime driver hooks (runtime-windows/native/CMakeLists.txt)"
+  libmain_hook.so: "Same"
+  libkgslshim.so: "Adreno KGSL shim for the Windows runtime (fetch-windows-runtime-components.sh)"
+  libevshim.so: "LD_PRELOADed into the runtime's launched programs (app/build.gradle.kts:155)"
+  libextras.so: "Windows runtime helpers (runtime-windows/native/CMakeLists.txt)"
+  liblsfg-vk-layer.so: "Frame generation layer (SPEC 5c, fetch-lsfg-layer.sh)"
+  libdroidtop_agent.so: "droidtop agent library (net-core/agent-lib.pin, fetch-agent-lib.sh)"
+  libwindowcast_client.so: "windowcast client: the separate streaming project's library (SPEC 7a)"
+  libwindowcast_jni.so: "Same, its JNI"
+  libspake2.so: "Wireless debugging pairing, SPAKE2 (libadb-android, SPEC 4 'Wireless debugging')"
+  libjni_pckeyboard.so: "droidtop's keyboard (input-keyboard)"
+  libarchive-jni.so: "Archive unpacking for downloads (SPEC 12a)"
+  libzstd-jni-1.5.7-5.so: "zstd for downloads and container images"
+  libandroidx.graphics.path.so: "AndroidX graphics-path (Compose)"
+  libanimation-decoder-gif.so: "Animated cover art decoding (Coil)"
+  libdatastore_shared_counter.so: "AndroidX DataStore"
+  libnrb.so: "TO IDENTIFY: not built by droidtop; only JNI_OnLoad exported; loaded by a dependency"
+
+# EnginehostGameEndedReceiver is deliberately not in exported_ok: the lane
+# found it should be fixed in code (https://github.com/Droidtop/tracker/issues/550#issuecomment-6647163484).
+
 api:
-  - exec               # the noroot Linux runtime starts proot and its processes
-  - dynamic-code       # plugin host loads plugin dex in :pluginhost
-  - native-load
-  - reflection
-  - package-install    # emulator and self updates
-  - clipboard-read     # paste into the keyboard and the desktop
-  - location           # Wi-Fi SSID for pairing
-  - audio-record       # windowcast mic passthrough
-  - camera             # QR pairing
-  - native-process
-  - native-network
-  - native-loading
-  - native-memory
-  - native-injection   # libproot (the noroot Linux runtime) reads and writes its tracee's memory: process_vm_readv/writev
+  exec: "The no-root Linux runtime starts proot and its processes (SPEC 3, ProotRuntime)"
+  dynamic-code: "The plugin host loads plugin dex in :pluginhost (plugin-api.md)"
+  native-load: "droidtop's native modules (native_libs)"
+  reflection: "AndroidX, Launcher3 and Kotlin internals"
+  package-install: "droidtop's own updates and app sources' installs (SPEC 10b)"
+  clipboard-read: "Paste into the keyboard and the desktop (SPEC 6d)"
+  location: "Android's price for reading the Wi-Fi name (permissions above)"
+  audio-record: "Desktop's Microphone row and offline voice typing (SPEC 3d, Droidtop/tracker#343)"
+  accessibility: "The HOME combos over games (Droidtop/tracker#740), off until the person turns it on"
+  device-admin: "The Standard home screen's Lock screen gesture (ScreenOffAdminReceiver: not exported, BIND_DEVICE_ADMIN, off until enabled)"
+  native-process: "proot and the Windows runtime start processes"
+  native-network: "aria2, crane, the agent and windowcast libraries"
+  native-loading: "The Windows runtime and PulseAudio load modules"
+  native-memory: "Runtimes and JITs (Box64, Wine)"
+  native-injection: "libproot reads and writes its tracee's memory: process_vm_readv/writev"
+
+# Callers allowed one by one, so the category is still a finding anywhere else.
+api_callers_ok:
+  trust-all-tls:
+    "Lio/github/muntashirakon/adb/SslUtils$2;": "TLS to the device's own adbd for wireless debugging, only ever 127.0.0.1 (WirelessDebuggingOps.kt:229); adbd's self-signed certificate is authenticated by the SPAKE2 pairing"
+    "Lorg/eclipse/jgit/transport/http/NoCheckX509TrustManager;": "Only takes effect when a repository sets http.sslVerify false; droidtop's only jgit use (ThemeDownloader, https) never does"
+
+# Findings the droidtop lane explained, each with its reason and source.
+# They stay in the report as info, marked "Explained".
+explained:
+  - rule: apkid.packer
+    location: "droidtop*.apk"
+    reason: "No packer: R8's short names (isMinifyEnabled) match APKiD's DexGuard heuristic; a rebuild from the commit reproduces it"
+    source: "https://github.com/Droidtop/tracker/issues/550#issuecomment-6647163484"
+  - rule: apkid.manipulator
+    location: "droidtop*.apk"
+    reason: "AGP's release resource-path shortening (res/-1.xml, res/-A.png; 1,801 entries in 2898), not a manipulation"
+    source: "https://github.com/Droidtop/tracker/issues/550#issuecomment-6647163484"
+  - rule: endpoint.not-in-purpose
+    location: "1.2.2.1"
+    reason: "Not an address: an ASN.1 OID in crypto tables (classes6.dex, libwindowcast_client.so) and part of a Go closure name in libcrane.so"
+    source: "https://github.com/Droidtop/tracker/issues/550#issuecomment-6647163484"
+
 hosts:
   - github.com
   - "*.github.com"
@@ -125,7 +242,6 @@ hosts:
   - mamedev.org
   - specs.openid.net
   - code.google.com
-native_libs: []            # the lane lists them; until then each is a medium finding
-exported_ok: []
+
 dynamic:
   monkey_events: 800
