@@ -38,6 +38,8 @@ def kind_of(path: str | Path) -> str:
         return "apk"
     if p.endswith(".droidplugin.tar.xz") or p.endswith(".droidplugin"):
         return "plugin-bundle"
+    if p.endswith(".enginehost.tar.xz"):
+        return "engine-bundle"   # Enginehost docs/engine-bundle-format.md
     if p.endswith((".json", ".jws")) and "catalog" in os.path.basename(p):
         return "catalog"
     if head == b"\x7fELF":

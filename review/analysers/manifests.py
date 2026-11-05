@@ -53,12 +53,33 @@ def _iter_hashes(manifest: dict):
                     yield item.get("path") or item.get("name"), item["sha256"]
 
 
+# A bundle's manifest: droidtop plugin bundles carry manifest.json
+# (plugin-api.md, "Install"); Enginehost cores carry enginehost-bundle.json
+# as their first member (Enginehost docs/engine-bundle-format.md).
+MANIFEST_NAMES = {"plugin-bundle": ("manifest.json",), "engine-bundle": ("enginehost-bundle.json",),
+                  "bundle": ("manifest.json", "enginehost-bundle.json")}
+SIGNATURE_FILES = ("manifest.json", "manifest.jws", "enginehost-bundle.json", "enginehost-bundle.sig",
+                   "enginehost-bundle.jws")
+
+
+def payload_sha256(base: Path, files: list[dict]) -> str:
+    """Enginehost's aggregate: UTF8(path) 0x00 ASCII(size) 0x00 bytes, per
+    file in manifest order, with no separators (engine-bundle-format.md)."""
+    h = hashlib.sha256()
+    for item in files:
+        p = base / item["path"]
+        data = p.read_bytes() if p.is_file() else b""
+        h.update(item["path"].encode("utf-8") + b"\0" + str(len(data)).encode("ascii") + b"\0" + data)
+    return h.hexdigest()
+
+
 def bundle(root: Path, profile: Profile, facts: dict, kind: str) -> list[Finding]:
     out: list[Finding] = []
-    manifests = [p for p in root.rglob("manifest.json") if p.is_file()]
+    names = MANIFEST_NAMES.get(kind, MANIFEST_NAMES["bundle"])
+    manifests = [p for n in names for p in root.rglob(n) if p.is_file()]
     if not manifests:
         out.append(Finding("manifest", "manifest.missing", "high",
-                           f"The {kind} carries no manifest.json.", location=root.name, category="nonsense"))
+                           f"The {kind} carries no {' or '.join(names)}.", location=root.name, category="nonsense"))
         return out
     mpath = min(manifests, key=lambda p: len(p.parts))
     try:
@@ -68,7 +89,9 @@ def bundle(root: Path, profile: Profile, facts: dict, kind: str) -> list[Finding
                         location=str(mpath.relative_to(root)), evidence=str(e), category="nonsense")]
     base = mpath.parent
     facts["manifest"] = {k: manifest.get(k) for k in ("id", "version", "versionCode", "contract", "abis",
-                                                       "lockdown", "origin") if k in manifest}
+                                                       "lockdown", "origin", "bundleId", "engine", "engines",
+                                                       "pluginVersion", "apiVersion", "entrypoint",
+                                                       "writesGameFolder", "gameWrites") if k in manifest}
 
     # Every payload hash matches the bytes, and nothing ships that the
     # manifest does not name.
@@ -84,10 +107,33 @@ def bundle(root: Path, profile: Profile, facts: dict, kind: str) -> list[Finding
             out.append(Finding("manifest", "manifest.hash-mismatch", "critical",
                                f"{rel} does not match the hash its manifest gives: the content was changed "
                                "after the manifest was made.", location=rel, evidence=want, category="malicious"))
+    # Enginehost's signed sizes and modes, and the aggregate over the payload.
+    signed = [f for f in manifest.get("files", []) or [] if isinstance(f, dict) and "path" in f]
+    for item in signed:
+        p = base / item["path"]
+        if p.is_file() and "size" in item and int(item["size"]) != p.stat().st_size:
+            out.append(Finding("manifest", "manifest.size-mismatch", "critical",
+                               f"{item['path']} is not the size its manifest signs.", location=item["path"],
+                               evidence=f"signed {item['size']}, found {p.stat().st_size}", category="malicious"))
+        mode = item.get("mode")
+        if isinstance(mode, (int, str)) and str(mode).strip():
+            try:
+                m = int(str(mode), 8) if isinstance(mode, str) else int(mode)
+                if m & 0o6000:
+                    out.append(Finding("manifest", "manifest.setid", "high", f"{item['path']} is signed setuid or setgid.",
+                                       location=item["path"], category="nonsense"))
+            except ValueError:
+                pass
+    if signed and manifest.get("payloadSha256"):
+        got = payload_sha256(base, signed)
+        if got.lower() != str(manifest["payloadSha256"]).lower():
+            out.append(Finding("manifest", "manifest.payload-mismatch", "critical",
+                               "The payload does not match the manifest's payloadSha256.", location=mpath.name,
+                               evidence=f"signed {manifest['payloadSha256']}, found {got}", category="malicious"))
     if named:
         for p in base.rglob("*"):
             rel = str(p.relative_to(base))
-            if p.is_file() and rel not in named and not rel.startswith(("manifest.", "META-INF")) \
+            if p.is_file() and rel not in named and rel not in SIGNATURE_FILES and not rel.startswith("META-INF") \
                     and ".d/" not in rel + "/" and not rel.endswith(".d"):
                 out.append(Finding("manifest", "manifest.unlisted-file", "high",
                                    f"{rel} ships in the bundle but its manifest does not list it.",

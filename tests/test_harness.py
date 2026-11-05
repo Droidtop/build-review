@@ -369,3 +369,35 @@ def test_ip_addresses_need_a_scheme_or_port_not_oids():
     assert ips("2.5.29.15") == [] and ips("1.2.2.1") == []
     assert ips("http://203.0.113.9/x") == ["203.0.113.9"]
     assert ips("connect 198.51.100.4:4444") == ["198.51.100.4"]
+
+
+def _engine_bundle(tmp_path, tamper=None):
+    from review.analysers.manifests import payload_sha256
+    root = tmp_path / "core"
+    (root / "lib").mkdir(parents=True)
+    (root / "classes.dex").write_bytes(b"dex\n035\0" + b"x" * 20)
+    (root / "lib" / "libcore.so").write_bytes(b"\x7fELF" + b"y" * 40)
+    files = [{"path": p, "size": (root / p).stat().st_size, "mode": "0644",
+              "sha256": hashlib.sha256((root / p).read_bytes()).hexdigest()}
+             for p in ("classes.dex", "lib/libcore.so")]
+    m = {"bundleId": "html-core", "engine": "html", "pluginVersion": "1.0.7-1", "apiVersion": 1,
+         "files": files, "payloadSha256": payload_sha256(root, files), "lockdown": True}
+    if tamper == "size":
+        m["files"][0]["size"] += 1
+    if tamper == "aggregate":
+        m["payloadSha256"] = "0" * 64
+    (root / "enginehost-bundle.json").write_text(json.dumps(m))
+    (root / "enginehost-bundle.jws").write_text("a.b.c")
+    return root
+
+
+def test_engine_bundle_clean_and_tampered(tmp_path):
+    from review.extract import kind_of
+    assert manifests.bundle(_engine_bundle(tmp_path / "a"), _profile(), {}, "engine-bundle") == []
+    rules = {f.rule for f in manifests.bundle(_engine_bundle(tmp_path / "b", "size"), _profile(), {}, "engine-bundle")}
+    assert rules == {"manifest.size-mismatch"}   # the aggregate hashes the real bytes, so only the size check sees it
+    rules = {f.rule for f in manifests.bundle(_engine_bundle(tmp_path / "c", "aggregate"), _profile(), {}, "engine-bundle")}
+    assert rules == {"manifest.payload-mismatch"}
+    f = tmp_path / "html-1.0.7.enginehost.tar.xz"
+    f.write_bytes(b"\xfd7zXZ\0")
+    assert kind_of(f) == "engine-bundle"
