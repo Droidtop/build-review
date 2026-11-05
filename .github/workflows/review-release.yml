@@ -402,10 +402,21 @@ jobs:
           fi
           [ -n "$REBUILD_ERROR" ] && args+=(--rebuild-error "$REBUILD_ERROR")
           python -m review decide "${args[@]}"
-          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+          # GitHub refuses a step summary over 1024k, and droidtop's report
+          # (every medium finding of the review and the rebuild's review) was
+          # 1758k (pilot run 42088253397): the summary takes the first 1000k,
+          # and the whole report is in the decision artifact.
+          if [ "$(wc -c < out/report.md)" -gt 1000000 ]; then
+            head -c 1000000 out/report.md >> "$GITHUB_STEP_SUMMARY"
+            printf '\n\n_Report truncated here; the whole report is report.md in the decision artifact._\n' >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
           # And into the log, which can be read where the summary and the
-          # artifacts can't (pilot run 41981798479).
+          # artifacts can't (pilot run 41981798479). The outcome line again at
+          # the end, where a log's tail reaches it.
           cat out/report.md
+          echo; grep -m1 '^\*\*Outcome' out/report.md || true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: review-decision-${{ needs.static.outputs.key }}
