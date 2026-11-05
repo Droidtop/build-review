@@ -69,7 +69,7 @@ check maps to an item in the owner's list:
 
 | Policy item | Analysers | Notes |
 |---|---|---|
-| Malicious behaviour, anything that doesn't make sense | Quark-Engine (Android behaviour rules), YARA `rules/yara` (miners, shells, root tools, hooking frameworks, exfiltration channels), Semgrep `rules/semgrep` (decode-and-exec, download-and-exec, curl into a shell, in Python, Ren'Py, JS, Lua and shell payloads), capa (native capabilities), archive checks (zip-slip, duplicate entries, links, setuid, bombs), manifest checks (payload hash against bytes, unlisted files) | |
+| Malicious behaviour, anything that doesn't make sense | Quark-Engine (Android behaviour rules), YARA `rules/yara` (miners, shells, root tools, hooking frameworks, exfiltration channels), Semgrep `rules/semgrep` (decode-and-exec, download-and-exec, curl into a shell, in Python, Ren'Py, JS, Lua and shell payloads), capa (native capabilities), archive checks (zip-slip, duplicate entries, links, setuid, bombs), manifest checks (payload hash against bytes, unlisted files; for engine bundles, signed sizes and modes and the aggregate `payloadSha256`), and **Enginehost's own conformance layer 1a** (`scripts/check-bundle-conformance.py` at a pinned commit, reused as it is) | |
 | Vulnerabilities | androguard (debuggable, cleartext, unguarded exported components, trust-all TLS managers), LIEF (exec stack, RWX segments, TEXTREL, PIE, canaries, PE NX/ASLR), Semgrep (TLS verify off, pickle, shell=True) | |
 | Permissions and API use against the stated purpose | androguard: manifest permissions and dex cross-references to sensitive API categories, against the repo's profile. Plugin `manifest.json` host-API permissions, and `priv.*` requires that aren't optional (plugin API §2.7). | `profiles/` |
 | Network endpoints | Hosts and IPs from dex strings, native strings, manifests and catalogs, against the profile. Known exfiltration hosts are critical, a hard-coded public IP is high. Catalog entries must be HTTPS and carry a hash. | |
@@ -105,7 +105,7 @@ catalogs that hold no runnable Android code get the static pass only.
 |---|---|---|
 | `apk` | `.apk` | APK analysers, native analysers on its `lib/`, and everything generic |
 | `plugin-bundle` | `.droidplugin.tar.xz` | Safe unpack, manifest and payload hash checks, host-API permissions, APK analysers on the payload, everything generic |
-| `engine-bundle` | profile (Enginehost core bundles) | The same as a plugin bundle, plus the `lockdown` flag |
+| `engine-bundle` | `*.enginehost.tar.xz` (Enginehost core bundles) | The `enginehost-bundle.json` manifest (signed sizes, modes, `payloadSha256`), Enginehost's conformance check, the bundle's dex (androguard), the `lockdown` flag, everything generic |
 | `catalog` | `catalog*.json` / `.jws` | Entry checks (HTTPS, hash, duplicates), endpoints, silent changes against the previous catalog |
 | `archive` / native | zip, tar, ELF, PE | Safe unpack, native, YARA, secrets, SBOM and CVEs, scripts |
 
@@ -133,16 +133,33 @@ not listed is unexpected.
 
 ## Rebuilds
 
-The `rebuild` job checks out the repo at the release's commit and builds it
-with the profile's `build.command`. Its toolchain is the repo's own
-`.github/actions/android-setup` at that commit (`setup: repo-android-setup`),
-or a pinned Java, Python or Rust. The job holds no secret. Its token can only
-read, and signing variables are set empty. A rebuild is therefore unsigned
-by construction. droidtop's Gradle falls back to the debug key when
-`SIGNING_KEYSTORE_PATH` is unset (`app/build.gradle.kts:98-145`). The
-rebuild is compared by findings, not bytes: "verifying older plugins means
-checking for malicious behavior or stuff that doesn't make sense, not
-verifying it's exactly what we had" (owner, 2026-10-15).
+`scripts/rebuild.py` checks out the repo at the release's commit and builds
+it with no secrets. Every credential-shaped variable is removed first, so a
+rebuild is unsigned by construction. droidtop's and Enginehost's Gradle
+builds sign only when a keystore is given (`app/build.gradle.kts`). There are
+two ways to build:
+
+- **`command`**, after a toolchain: the repo's own
+  `.github/actions/android-setup` at that commit (`setup: repo-android-setup`),
+  or a pinned Java or Rust.
+- **`setup: act`**: the repo's own build `job` of its own `workflow`,
+  replayed at that commit by [nektos/act](https://github.com/nektos/act)
+  (pinned, SHA-256 checked) on the runner in host mode. The job's own
+  actions run at their pinned commits, and its uploads are the outputs. The
+  Enginehost cores use this, because each core pins its toolchain and
+  Enginehost's plugin-api commit in that job. act is reused rather than an
+  emulator of our own (owner, 2026-11-05: "reuse and repurpose existing code
+  whenever possible"). Only the build job runs, never the signing one.
+
+The outputs get the names the release published (profile `outputs`: a glob
+to a name, or `"{kind}"`), so the rebuild's findings sit at the same paths
+as the original's and their fingerprints compare. A core's unsigned payload
+tar is repacked into the bundle's layout (`repack: payload`). A rebuilt
+bundle has no manifest yet, since that is made at signing, so it is
+reviewed as its unsigned payload. The rebuild is compared by findings, not
+bytes: "verifying older plugins means checking for malicious behavior or
+stuff that doesn't make sense, not verifying it's exactly what we had"
+(owner, 2026-10-15).
 
 ## Using it
 
