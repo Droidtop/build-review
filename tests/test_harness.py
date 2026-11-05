@@ -322,7 +322,7 @@ def test_profiles_parse():
         repo = str(p.relative_to(prof.ROOT))[:-4]
         loaded = prof.load(repo)
         assert loaded.known and loaded.repo == repo
-        assert loaded.build.get("command") or loaded.build.get("setup") == "act", f"{repo} has no way to rebuild"
+        assert loaded.build.get("command") or loaded.build.get("setup") in ("act", "mirror"), f"{repo} has no way to rebuild"
         assert loaded.build.get("outputs"), f"{repo} names no rebuild outputs"
 
 
