@@ -61,7 +61,8 @@ def is_native(path: Path) -> bool:
     return head == b"\x7fELF" or head[:2] == b"MZ"
 
 
-def analyse(root: Path, profile: Profile, facts: dict, rel_base: Path | None = None) -> list[Finding]:
+def analyse(root: Path, profile: Profile, facts: dict, rel_base: Path | None = None,
+            capa: bool = True) -> list[Finding]:
     import lief
 
     lief.logging.disable()
@@ -101,11 +102,17 @@ def analyse(root: Path, profile: Profile, facts: dict, rel_base: Path | None = N
             out.append(Finding(A, "native.upx", "critical", f"{path.name} is UPX-packed.", location=rel,
                                category="obfuscation"))
         capa_jobs.append((path, rel, info))
-    out += _capa_all(capa_jobs)
+    if capa:
+        out += _capa_all(capa_jobs)
     return out
 
 
-CAPA_TIMEOUT = int(os.environ.get("BUILD_REVIEW_CAPA_TIMEOUT", "900"))
+CAPA_TIMEOUT = int(os.environ.get("BUILD_REVIEW_CAPA_TIMEOUT", "600"))
+# The whole review's capa time. A library that would start past it is a
+# reported coverage gap (medium), not a pass and not a failed review.
+CAPA_BUDGET = int(os.environ.get("BUILD_REVIEW_CAPA_BUDGET", "2700"))
+_capa_done: dict = {}       # (size, sha256) -> findings, across a release's artefacts
+_capa_clock = {"start": None}
 CAPA_MAX_BYTES = 64 << 20
 
 
@@ -122,18 +129,32 @@ def _capa_workers() -> int:
 def _capa_all(jobs) -> list[Finding]:
     """capa is the slowest analyser (minutes per library), so libraries run
     in parallel, once per distinct file, each within a time budget."""
-    seen, todo = set(), []
+    import time
+
+    if _capa_clock["start"] is None:
+        _capa_clock["start"] = time.monotonic()
+    todo, out = [], []
     for path, rel, info in jobs:
         if info["arch"] not in ("i386", "x86_64", "X86_64", "I386", "AMD64"):
             continue
         key = (info["size"], hashlib.sha256(path.read_bytes()).hexdigest())
-        if key in seen:
-            continue
-        seen.add(key)
-        todo.append((path, rel, info))
-    out: list[Finding] = []
+        if key in _capa_done or any(k == key for k, _j in todo):
+            continue   # the same library in another APK of this release: once is enough
+        todo.append((key, (path, rel, info)))
+
+    def one(item):
+        key, (path, rel, info) = item
+        if time.monotonic() - _capa_clock["start"] > CAPA_BUDGET:
+            found = [Finding(A, "coverage.capa-skipped", "medium",
+                             f"capa's {CAPA_BUDGET} s budget for this review ran out before {path.name} "
+                             "(LIEF, YARA and the dynamic run covered it).", location=rel, category="native")]
+        else:
+            found = _capa(path, rel, info)
+        _capa_done[key] = found
+        return found
+
     with ThreadPoolExecutor(max_workers=_capa_workers()) as pool:
-        for found in pool.map(lambda j: _capa(*j), todo):
+        for found in pool.map(one, todo):
             out += found
     return out
 

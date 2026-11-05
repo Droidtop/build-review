@@ -28,14 +28,17 @@ DYNAMIC_CATEGORIES = {"malicious", "obfuscation", "process", "network"}
 
 def review_release(artefacts: list[Path], profile: Profile, *, repo: str, release: str, commit: str = "",
                    stage: str = "original", source: Path | None = None, previous: dict | None = None,
-                   kinds: dict[str, str] | None = None) -> dict:
+                   kinds: dict[str, str] | None = None, facts_only: bool = False) -> dict:
+    """facts_only: just what the diff compares (permissions, components, API
+    categories, hosts, native files and their imports), for the previous
+    release. Its findings are not judged."""
     findings: list[Finding] = []
     facts: dict = {"hosts": {}}
     listed = []
     for art in artefacts:
         kind = (kinds or {}).get(art.name) or profile.kind_for(art.name) or kind_of(art)
         listed.append({"name": art.name, "kind": kind, "sha256": sha256(art), "size": art.stat().st_size})
-        findings += review_artefact(art, kind, profile, facts)
+        findings += review_artefact(art, kind, profile, facts, facts_only)
     if source is not None:
         findings += content.deps_source(source, profile)
     if not profile.known:
@@ -59,7 +62,7 @@ def review_release(artefacts: list[Path], profile: Profile, *, repo: str, releas
     return _record(repo, release, commit, stage, listed, findings, facts, changes, needs_dynamic)
 
 
-def review_artefact(art: Path, kind: str, profile: Profile, facts: dict) -> list[Finding]:
+def review_artefact(art: Path, kind: str, profile: Profile, facts: dict, facts_only: bool = False) -> list[Finding]:
     out: list[Finding] = []
     work = Path(tempfile.mkdtemp(prefix="review-"))
     try:
@@ -68,7 +71,7 @@ def review_artefact(art: Path, kind: str, profile: Profile, facts: dict) -> list
             shutil.copy(art, work / art.name)
         elif kind == "apk":
             out += extract(art, work / art.name, nested=False)
-            found = apk.analyse(str(art), profile, facts)
+            found = apk.analyse(str(art), profile, facts, facts_only)
             if profile.entry_for(art.name).get("debug"):
                 # The published debug variant (SPEC 10b) is debuggable on
                 # purpose; everything else about it is held to the profile.
@@ -79,7 +82,7 @@ def review_artefact(art: Path, kind: str, profile: Profile, facts: dict) -> list
             out += manifests.bundle(work / art.name, profile, facts, kind if kind != "archive" else "bundle") \
                 if kind != "archive" else []
             for inner in sorted((work / art.name).rglob("*.apk")):
-                out += apk.analyse(str(inner), profile, facts)
+                out += apk.analyse(str(inner), profile, facts, facts_only)
         elif kind == "elf" or kind == "native":
             shutil.copy(art, work / art.name)
         else:
@@ -87,7 +90,9 @@ def review_artefact(art: Path, kind: str, profile: Profile, facts: dict) -> list
             out.append(Finding("harness", "harness.unknown-kind", "medium",
                                f"{art.name} is of a kind the harness has no specific analyser for; it gets the "
                                "generic ones only.", location=art.name, category="harness"))
-        out += native.analyse(work, profile, facts)
+        out += native.analyse(work, profile, facts, capa=not facts_only)
+        if facts_only:
+            return out
         out += native.yara_scan(work, RULES / "yara")
         out += content.secrets(work, profile)
         out += content.deps_artefact(work, profile, facts)

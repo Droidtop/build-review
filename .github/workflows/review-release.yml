@@ -85,7 +85,7 @@ env:
 jobs:
   static:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 240
     outputs:
       commit: ${{ steps.commit.outputs.commit }}
       needs_dynamic: ${{ steps.review.outputs.needs_dynamic }}
@@ -145,7 +145,7 @@ jobs:
       - name: Review the previous release (for the diff)
         run: |
           if [ -d work/previous ] && [ -n "$(ls -A work/previous 2>/dev/null)" ]; then
-            python -m review review --repo "$REPO" --release "previous" --out work/previous.json work/previous || true
+            python -m review review --repo "$REPO" --release "previous" --facts-only --out work/previous.json work/previous || true
           fi
       - name: Review
         id: review
@@ -299,7 +299,7 @@ jobs:
     needs: [static, rebuild]
     if: always() && needs.rebuild.outputs.ran == 'true' && needs.rebuild.outputs.error == ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {repository: Droidtop/build-review, ref: "${{ inputs.harness-ref }}", path: harness, persist-credentials: false}

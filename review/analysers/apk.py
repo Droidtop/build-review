@@ -87,7 +87,7 @@ IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 SU_RE = re.compile(r"(^|/)(su|busybox|magisk)$|/system/xbin/su|/sbin/su")
 
 
-def analyse(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
+def analyse(apk_path: str, profile: Profile, facts: dict, facts_only: bool = False) -> list[Finding]:
     out: list[Finding] = []
     try:
         out += _androguard(apk_path, profile, facts)
@@ -97,6 +97,8 @@ def analyse(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
     # before APKiD, Quark and the native analysers start.
     import gc
     gc.collect()
+    if facts_only:
+        return out
     try:
         out += _apkid(apk_path, profile)
     except Exception as e:  # noqa: BLE001

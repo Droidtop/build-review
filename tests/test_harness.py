@@ -345,3 +345,18 @@ def test_placeholder_hosts_are_not_endpoints():
     facts = {"hosts": {"x": "dex", "default.url": "dex", "1.2.2.1": "dex", "evil.example.net": "dex"}}
     found = {f.location for f in behaviour.endpoints(facts, _profile())}
     assert found == {"1.2.2.1", "evil.example.net"}
+
+
+def test_facts_only_review_skips_the_judging_analysers(tmp_path, monkeypatch):
+    from review.analysers import content, native
+    called = []
+    for mod, name in ((native, "yara_scan"), (content, "secrets"), (content, "deps_artefact"), (content, "scripts")):
+        monkeypatch.setattr(mod, name, lambda *a, _n=name, **k: called.append(_n) or [])
+    root = _bundle(tmp_path)
+    art = tmp_path / "p.droidplugin.tar.xz"
+    with tarfile.open(art, "w:xz") as tf:
+        for p in root.iterdir():
+            tf.add(p, arcname=p.name)
+    rec = static.review_release([art], _profile(plugin_permissions=["library.read"]), repo="T/r", release="prev",
+                                facts_only=True)
+    assert called == [] and rec["facts"]["pluginPermissions"] == ["library.read"]

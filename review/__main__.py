@@ -100,7 +100,7 @@ def cmd_review(a):
         prev = dict(pr.get("facts", {}), release=pr.get("release"))
     rec = static.review_release(arts, p, repo=a.repo, release=a.release, commit=a.commit or "",
                                 stage=a.stage, source=Path(a.source) if a.source else None, previous=prev,
-                                kinds=_kinds(a.kind))
+                                kinds=_kinds(a.kind), facts_only=a.facts_only)
     _w(a.out, rec)
     _out("clean", str(rec["clean"]).lower())
     _out("unreviewable", str(rec["unreviewable"]).lower())
@@ -196,6 +196,7 @@ def main(argv=None):
     s.add_argument("--commit"); s.add_argument("--stage", default="original", choices=["original", "rebuild"])
     s.add_argument("--source"); s.add_argument("--previous", help="the earlier release's record.json")
     s.add_argument("--kind", action="append", help="name=kind, overriding detection")
+    s.add_argument("--facts-only", action="store_true", help="only what the diff compares (the previous release)")
     s.add_argument("--out", required=True); s.add_argument("artefacts", nargs="+")
     s.set_defaults(f=cmd_review)
 
