@@ -11,6 +11,10 @@ name: Build review
 # BUILD_REVIEW_TOKEN, never `secrets: inherit`. The rebuild runs with no
 # secrets at all.
 #
+# BUILD_REVIEW_TOKEN is optional. Without it, the run's own token reads
+# public repos and releases, the caller's own artifacts and the tracker;
+# filing an issue is the only step skipped (with a warning).
+#
 # Two ways in:
 #   source: artifact  the standing gate. A build job in the same run uploads
 #                     the unsigned artefacts as `artifact-name`; the sign job
@@ -47,7 +51,9 @@ on:
         type: string
         default: ""
       mode:
-        description: gate (fail unless signable) | audit (record the outcome and carry on)
+        description: >
+          gate (fail unless signable) | report (the gate's review and outputs, never failing: for
+          rolling the gate out) | audit (the batch runner's: record the outcome and carry on)
         type: string
         default: gate
       file-issues:

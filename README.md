@@ -150,16 +150,27 @@ sign:
   # sign needs.review.outputs.sign-artifact
 ```
 
-Pass only `BUILD_REVIEW_TOKEN`, never `secrets: inherit`. In gate mode the
-review job fails unless the outcome is approved or rebuilt. Repos whose
+Pass only `BUILD_REVIEW_TOKEN`, never `secrets: inherit`. Three modes:
+
+- `gate`: the review job fails unless the outcome is approved or rebuilt,
+  so an unsignable build is not signed.
+- `report`: the same review and outputs, never failing. This is how the
+  gate is rolled out: releases are signed as today, and every outcome is in
+  the run's summary. Callers take the mode from one variable,
+  `vars.BUILD_REVIEW_MODE` (default `report`), so the owner switches every
+  repo to `gate` at once.
+- `audit`: the batch runner's mode. It records the outcome and carries on. Repos whose
 build job signs inline (droidtop's `android-build.yml`, for example) must
 first move signing into a job of its own. That change belongs to the lane
 and the coordinator, not to this repo.
 
 ### The forced audit (batch runner)
 
-`batch.yml` is started by hand only (owner, 2026-11-04: no initial review
-pass is run yet). It reads the inventory issue (default Droidtop/tracker#876)
+`batch.yml` is started by hand only. The owner decided, 2026-11-04, not to
+re-audit the releases signed under the exposed chain: "No, we're not gonna
+retest this time. This wasn't a key theft, it was an exposure in a secure
+environment". So the backlog in #876 is not run. The runner exists for the
+next revocation, and for a pilot dry run (`limit: 1`). It reads the inventory issue (default Droidtop/tracker#876)
 from its body and its continuation comments, carrying the `### owner/repo`
 heading across. It takes the unticked lines that match `repos` and `tags`, up
 to `limit` (256 at most per run), and reviews each in audit mode. Then it:
@@ -209,11 +220,16 @@ python -m pytest -q tests
 - **This repo, public.** Reusable workflows can be called across
   organisations (Droidtop and gamegrab-sources) only from a public repo.
   Callers pin `@v1`, a tag on a reviewed commit.
-- **`BUILD_REVIEW_TOKEN`**, a GitHub App installation token or fine-grained
-  token with contents:read on every repo in the inventory and issues:write on
-  Droidtop/tracker. It is set as a secret here, for the batch runner, and in
-  each calling repo. It is never a signing secret.
-- A `build-review` label on Droidtop/tracker.
+- **`BUILD_REVIEW_TOKEN`** (optional; the owner's, pending): contents:read
+  on every repo in the inventory and issues:write on Droidtop/tracker. It is
+  set as a secret here, for the batch runner, and in each calling repo, and
+  it is never a signing secret. Without it, everything still runs on the
+  run's own token, which reads public repos, releases and the tracker. Only
+  writing to the tracker is skipped, with a warning: filed issues, and the
+  batch runner's ticks, which then run as a dry run. Private repos need the
+  token.
+- A `v1` tag on the reviewed commit that callers pin.
+- A `build-review` label on Droidtop/tracker (exists).
 
 ## Limits, stated
 

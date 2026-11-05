@@ -18,16 +18,24 @@ jobs:
       release: build-${{ github.run_number }}
       source: artifact
       artifact-name: unsigned
-      mode: gate
+      # One switch, an org or repo variable: report (the default while the
+      # gate is rolled out: the same review and outputs, nothing held back)
+      # or gate (an unsignable build is not signed).
+      mode: ${{ vars.BUILD_REVIEW_MODE || 'report' }}
       harness-ref: v1
     secrets:
       BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}   # never `secrets: inherit`
 
   sign:
-    needs: review
-    if: needs.review.outputs.sign == 'true'
+    needs: [build, review]
+    # gate: only a signable build (sign-artifact names the original or the
+    # rebuild). report: signs as today, whatever the review says (the
+    # outcome is in the run's summary).
+    if: >-
+      always() && needs.build.result == 'success' &&
+      (needs.review.outputs.sign == 'true' || (vars.BUILD_REVIEW_MODE || 'report') == 'report')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with: {name: "${{ needs.review.outputs.sign-artifact }}", path: to-sign}
+        with: {name: "${{ needs.review.outputs.sign == 'true' && needs.review.outputs.sign-artifact || 'unsigned' }}", path: to-sign}
       # ... the repo's existing signing and publishing steps, unchanged ...

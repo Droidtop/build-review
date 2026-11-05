@@ -59,7 +59,7 @@ jobs:
       - run: python -m pip install -q pyyaml==6.0.2
       - id: plan
         env:
-          BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}
+          BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
         run: |
           python -m review batch-plan --inventory "${{ inputs.inventory }}" --repos "${{ inputs.repos }}" \
             --tags "${{ inputs.tags }}" --limit "${{ inputs.limit }}" ${{ inputs.redo && '--redo' || '' }}
@@ -98,10 +98,21 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: {pattern: "review-decision-*", path: results}
       - name: Tick the inventory
+        id: tick
         env:
           BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          DRY: ${{ inputs.dry-run }}
         run: |
-          python -m review batch-tick --inventory "${{ inputs.inventory }}" --results results ${{ inputs.dry-run && '--dry-run' || '' }}
+          # Ticking writes to the tracker, which only BUILD_REVIEW_TOKEN can
+          # do; without it the run reports what it would tick.
+          if [ -z "$BUILD_REVIEW_TOKEN" ] && [ "$DRY" != true ]; then
+            echo "::warning::no BUILD_REVIEW_TOKEN: running the tick as a dry run"
+            DRY=true
+          fi
+          echo "dry=$DRY" >> "$GITHUB_OUTPUT"
+          python -m review batch-tick --inventory "${{ inputs.inventory }}" --results results $([ "$DRY" = true ] && echo --dry-run) \
+            | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Results file
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,7 +123,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: build-review-results, path: out, retention-days: 400}
       - name: Publish the results (the coordinator ships them with the catalog)
-        if: ${{ !inputs.dry-run }}
+        if: steps.tick.outputs.dry != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
