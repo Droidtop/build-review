@@ -38,7 +38,7 @@ def review_release(artefacts: list[Path], profile: Profile, *, repo: str, releas
     for art in artefacts:
         kind = (kinds or {}).get(art.name) or profile.kind_for(art.name) or kind_of(art)
         listed.append({"name": art.name, "kind": kind, "sha256": sha256(art), "size": art.stat().st_size})
-        findings += review_artefact(art, kind, profile, facts, facts_only)
+        findings += review_artefact(art, kind, profile, facts, facts_only, stage)
     if source is not None:
         findings += content.deps_source(source, profile)
     if not profile.known:
@@ -62,7 +62,8 @@ def review_release(artefacts: list[Path], profile: Profile, *, repo: str, releas
     return _record(repo, release, commit, stage, listed, findings, facts, changes, needs_dynamic)
 
 
-def review_artefact(art: Path, kind: str, profile: Profile, facts: dict, facts_only: bool = False) -> list[Finding]:
+def review_artefact(art: Path, kind: str, profile: Profile, facts: dict, facts_only: bool = False,
+                    stage: str = "original") -> list[Finding]:
     out: list[Finding] = []
     work = Path(tempfile.mkdtemp(prefix="review-"))
     try:
@@ -79,8 +80,16 @@ def review_artefact(art: Path, kind: str, profile: Profile, facts: dict, facts_o
             out += found
         elif kind in ("plugin-bundle", "engine-bundle", "archive"):
             out += extract(art, work / art.name)
-            out += manifests.bundle(work / art.name, profile, facts, kind if kind != "archive" else "bundle") \
-                if kind != "archive" else []
+            # A rebuild is the unsigned payload: the manifest and signature
+            # are made at signing, so a rebuild has none to check. Its
+            # payload gets every other analyser, at the same paths.
+            unsigned = stage == "rebuild" and not any(
+                (work / art.name / n).is_file() for n in manifests.MANIFEST_NAMES.get(kind, ()))
+            if kind != "archive" and not unsigned:
+                out += manifests.bundle(work / art.name, profile, facts, kind)
+            dexes = sorted(str(p) for p in (work / art.name).rglob("*.dex") if ".apk.d" not in str(p))
+            if dexes:
+                out += apk.analyse_dex(dexes, profile, facts, art.name)
             for inner in sorted((work / art.name).rglob("*.apk")):
                 out += apk.analyse(str(inner), profile, facts, facts_only)
         elif kind == "elf" or kind == "native":

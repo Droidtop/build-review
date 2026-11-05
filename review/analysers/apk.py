@@ -110,13 +110,17 @@ def analyse(apk_path: str, profile: Profile, facts: dict, facts_only: bool = Fal
     return out
 
 
-def _androguard(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
+def _quiet() -> None:
     logging.getLogger("androguard").setLevel(logging.ERROR)
     try:
         from loguru import logger as _l  # androguard 4 logs through loguru
         _l.remove()
     except Exception:  # noqa: BLE001
         pass
+
+
+def _androguard(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
+    _quiet()
     from androguard.misc import AnalyzeAPK
 
     a, _d, dx = AnalyzeAPK(apk_path)
@@ -184,6 +188,29 @@ def _androguard(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
                                    f"The {tag} {comp} is exported with no permission and the profile does not "
                                    "say why.", location=comp, category="vulnerability"))
 
+    out += _dex(dx, profile, facts, name)
+    return out
+
+
+def analyse_dex(dex_paths: list[str], profile: Profile, facts: dict, name: str) -> list[Finding]:
+    """A bundle's own dex files (an Enginehost core's dexFiles), with the same
+    androguard checks an APK's dex gets."""
+    try:
+        _quiet()
+        from androguard.core.analysis.analysis import Analysis
+        from androguard.core.dex import DEX
+
+        dx = Analysis()
+        for p in dex_paths:
+            dx.add(DEX(Path(p).read_bytes()))
+        dx.create_xref()
+        return _dex(dx, profile, facts, name)
+    except Exception as e:  # noqa: BLE001
+        return [harness_finding("androguard", e)]
+
+
+def _dex(dx, profile: Profile, facts: dict, name: str) -> list[Finding]:
+    out: list[Finding] = []
     # API use against stated purpose, from dex cross-references.
     used: dict[str, list[str]] = {}
     for cat, sigs in API_CATEGORIES.items():
@@ -218,7 +245,7 @@ def _androguard(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
             used[cat] = [c for c in used[cat] if not any(c.startswith(p) for p in ok)]
             if not used[cat]:
                 del used[cat]
-    facts["apiCategories"] = sorted(used)
+    facts["apiCategories"] = sorted(set(facts.get("apiCategories", [])) | set(used))
     for cat, where in sorted(used.items()):
         if cat in profile.api:
             continue

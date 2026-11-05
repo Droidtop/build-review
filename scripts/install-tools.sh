@@ -4,6 +4,8 @@
 # mismatch stops the run: the harness never reviews with a tool it can't
 # vouch for.
 set -euo pipefail
+act_only=false
+if [ "${1:-}" = "--act-only" ]; then act_only=true; shift; fi
 bin="${1:-$HOME/.local/bin}"
 mkdir -p "$bin"
 tmp=$(mktemp -d)
@@ -13,6 +15,16 @@ fetch() { # url sha256 out
   curl -sSfL --retry 4 -o "$3" "$1"
   echo "$2  $3" | sha256sum -c --quiet -
 }
+
+# nektos/act replays a repo's own build job for a rebuild (profile
+# `setup: act`, scripts/rebuild.py): reused, not an emulator of our own.
+fetch https://github.com/nektos/act/releases/download/v0.2.97/act_Linux_x86_64.tar.gz \
+  67b4976a56f33ea7870b798912e738ec44eef38e7578ae7b532f2def1c73a5ad "$tmp/act.tgz"
+tar -xzf "$tmp/act.tgz" -C "$bin" act
+if $act_only; then
+  echo "$bin" >> "${GITHUB_PATH:-/dev/null}"
+  exit 0
+fi
 
 fetch https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
   551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb "$tmp/gitleaks.tgz"
@@ -39,6 +51,17 @@ if command -v apt-get >/dev/null && [ "${INSTALL_APT:-1}" = 1 ]; then
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q yara tshark aapt >/dev/null
 fi
 python3 -m pip install -q -r "$(dirname "$0")/../requirements.txt"
+# Enginehost's own bundle conformance check and engine names, at a pinned
+# commit: reused as an analyser (owner, 2026-11-05: "reuse and repurpose
+# existing code whenever possible").
+eh="$HOME/.enginehost-tooling"
+if [ ! -d "$eh/.git" ]; then
+  git init -q "$eh" && git -C "$eh" remote add origin https://github.com/Droidtop/enginehost
+fi
+git -C "$eh" sparse-checkout set --no-cone /scripts/check-bundle-conformance.py /app/src/main/kotlin/dev/enginehost/EngineNames.kt
+git -C "$eh" fetch -q --depth 1 --filter=blob:none origin a74d7e906edc440e6e24ba5325ef35f679c2bd5c
+git -C "$eh" checkout -q FETCH_HEAD
+test -f "$eh/scripts/check-bundle-conformance.py"
 # Quark's behaviour rules, at a pinned commit of quark-engine/quark-rules.
 rules="$HOME/.quark-engine/quark-rules"
 if [ ! -d "$rules/.git" ]; then

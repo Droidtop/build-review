@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import shutil
 import tarfile
 import zipfile
@@ -316,12 +317,13 @@ def test_pipeline_finds_planted_problems(tmp_path):
 
 def test_profiles_parse():
     for p in Path(prof.ROOT).rglob("*.yml"):
-        if p.name.startswith("_"):
-            continue
+        if any(part.startswith("_") for part in p.relative_to(prof.ROOT).parts):
+            continue   # the template and the shared kinds
         repo = str(p.relative_to(prof.ROOT))[:-4]
         loaded = prof.load(repo)
         assert loaded.known and loaded.repo == repo
-        assert loaded.build.get("command"), f"{repo} has no rebuild command"
+        assert loaded.build.get("command") or loaded.build.get("setup") == "act", f"{repo} has no way to rebuild"
+        assert loaded.build.get("outputs"), f"{repo} names no rebuild outputs"
 
 
 @needs_tools
@@ -401,3 +403,43 @@ def test_engine_bundle_clean_and_tampered(tmp_path):
     f = tmp_path / "html-1.0.7.enginehost.tar.xz"
     f.write_bytes(b"\xfd7zXZ\0")
     assert kind_of(f) == "engine-bundle"
+
+
+@pytest.mark.skipif(not (Path.home() / ".enginehost-tooling/scripts/check-bundle-conformance.py").exists(),
+                    reason="Enginehost tooling not installed (scripts/install-tools.sh)")
+def test_engine_bundle_runs_enginehosts_own_conformance_check(tmp_path):
+    from review.analysers.manifests import payload_sha256
+    root = tmp_path / "core"
+    (root / "lib" / "arm64-v8a").mkdir(parents=True)
+    (root / "lib" / "arm64-v8a" / "libcore.so").write_bytes(b"\x7fELF\x02\x01\x01" + b"\0" * 57)
+    files = [{"path": "lib/arm64-v8a/libcore.so", "size": 64, "mode": 420,
+              "sha256": hashlib.sha256((root / "lib/arm64-v8a/libcore.so").read_bytes()).hexdigest()}]
+    m = {"bundleId": "x", "engine": "html", "files": files, "payloadSha256": payload_sha256(root, files)}
+    (root / "enginehost-bundle.json").write_text(json.dumps(m))
+    found = manifests.bundle(root, _profile(), {}, "engine-bundle")
+    assert any(f.rule == "engine.conformance" and "x86_64" in f.title for f in found), [f.title for f in found]
+
+
+def test_rebuild_names_outputs_and_repacks_a_core_payload(tmp_path, monkeypatch):
+    import subprocess, sys as _sys
+    src = tmp_path / "src"
+    (src / "build" / "unsigned" / "payload").mkdir(parents=True)
+    (src / "build" / "unsigned" / "payload" / "classes.dex").write_bytes(b"dex")
+    (src / "build" / "unsigned" / "bundle-metadata.json").write_text("{}")
+    with tarfile.open(src / "build" / "unsigned.tar", "w") as tf:
+        tf.add(src / "build" / "unsigned" / "payload", arcname="payload")
+        tf.add(src / "build" / "unsigned" / "bundle-metadata.json", arcname="bundle-metadata.json")
+    root = tmp_path / "profiles"
+    (root / "T").mkdir(parents=True)
+    (root / "T" / "core.yml").write_text(
+        "build:\n  command: 'true'\n  outputs: {\"build/unsigned.tar\": \"{engine-bundle}\"}\n  repack: payload\n")
+    rec = tmp_path / "original.json"
+    rec.write_text(json.dumps({"artefacts": [{"name": "dev.x.v1.enginehost.tar.xz", "kind": "engine-bundle"}]}))
+    script = Path(__file__).resolve().parent.parent / "scripts" / "rebuild.py"
+    env = dict(os.environ, BUILD_REVIEW_PROFILES=str(root), SECRET_TOKEN="x")
+    r = subprocess.run([_sys.executable, str(script), "T/core", str(src), str(rec), str(tmp_path / "out")],
+                       capture_output=True, text=True, env=env)
+    assert "error=" not in r.stdout, r.stdout + r.stderr
+    out = tmp_path / "out" / "dev.x.v1.enginehost.tar.xz"
+    with tarfile.open(out) as tf:
+        assert tf.getnames() == ["classes.dex"]

@@ -11,11 +11,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
 from ..findings import Finding
 from ..profile import Profile
+from ..tools import ToolMissing, harness_finding
 
 
 def _sha256(p: Path) -> str:
@@ -159,6 +162,8 @@ def bundle(root: Path, profile: Profile, facts: dict, kind: str) -> list[Finding
             out.append(Finding("manifest", "plugin.priv-required", "high",
                                f"Requires {req.get('id')} without marking it optional (plugin API §2.7).",
                                location=f"manifest.json:{req.get('id')}", category="nonsense"))
+    if kind == "engine-bundle":
+        out += engine_conformance(base, mpath)
     if kind == "engine-bundle" and manifest.get("lockdown") is False:
         out.append(Finding("manifest", "engine.lockdown-off", "medium",
                            "The core turns process lockdown off.", location="manifest.json", category="process"))
@@ -167,7 +172,40 @@ def bundle(root: Path, profile: Profile, facts: dict, kind: str) -> list[Finding
     for v in _walk_strings(manifest):
         u = urlparse(v)
         if u.scheme in ("http", "https", "ws", "wss") and u.hostname:
-            hosts.setdefault(u.hostname.lower(), "manifest.json")
+            hosts.setdefault(u.hostname.lower(), mpath.name)
+    return out
+
+
+ENGINEHOST_TOOLING = Path(os.environ.get("ENGINEHOST_TOOLING", str(Path.home() / ".enginehost-tooling")))
+
+
+def engine_conformance(base: Path, manifest_path: Path) -> list[Finding]:
+    """Enginehost's own conformance layer 1a (scripts/check-bundle-conformance.py),
+    which its signing workflow runs before signing, run again on the
+    published bundle. Reused, not rewritten (owner, 2026-11-05: "reuse and
+    repurpose existing code whenever possible"). Each problem it reports is
+    one the signer refuses, so each blocks."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    script = ENGINEHOST_TOOLING / "scripts" / "check-bundle-conformance.py"
+    names = ENGINEHOST_TOOLING / "app/src/main/kotlin/dev/enginehost/EngineNames.kt"
+    if not script.exists() or not names.exists():
+        return [harness_finding("enginehost-conformance", ToolMissing(str(script)))]
+    with tempfile.TemporaryDirectory() as tmp:
+        payload = Path(tmp) / "payload"
+        shutil.copytree(base, payload, ignore=shutil.ignore_patterns(*SIGNATURE_FILES), symlinks=False)
+        r = subprocess.run([sys.executable, "-I", str(script), "--metadata", str(manifest_path), "--payload",
+                            str(payload), "--engine-names", str(names)], capture_output=True, text=True, timeout=600)
+    out = []
+    for line in r.stderr.splitlines():
+        if line.startswith("::error::"):
+            problem = line[len("::error::"):].strip()
+            out.append(Finding("manifest", "engine.conformance", "high", f"Enginehost conformance: {problem}",
+                               location=problem[:120], category="nonsense"))
+    if r.returncode and not out:
+        out.append(harness_finding("enginehost-conformance", RuntimeError(r.stderr[-800:])))
     return out
 
 
