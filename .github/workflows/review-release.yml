@@ -338,8 +338,13 @@ jobs:
           REBUILD_RESULT: ${{ needs.rebuild.result }}
           REREVIEW_RESULT: ${{ needs.review-rebuild.result }}
         run: |
-          orig=got/review-static-${{ needs.static.outputs.key }}/original.json
-          [ -f got/review-dynamic-${{ needs.static.outputs.key }}/original.json ] && orig=got/review-dynamic-${{ needs.static.outputs.key }}/original.json
+          # download-artifact puts a lone matching artifact straight into got/
+          # and several into got/<name>/, so the records are found, not assumed
+          # (pilot run 41968340207). The dynamic job's copy of the record has
+          # its findings folded in, so it wins over the static one.
+          orig=$(find got -path '*review-dynamic-*' -name original.json | head -1)
+          [ -n "$orig" ] || orig=$(find got -name original.json -not -path '*/apks/*' | head -1)
+          if [ -z "$orig" ]; then echo "::error::no review record in this run's artifacts"; exit 1; fi
           if [ "${{ needs.static.outputs.needs_dynamic }}" = true ] && [ "${{ needs.dynamic.result }}" != success ]; then
             # The dynamic run was needed and didn't finish: the review is incomplete.
             python - "$orig" <<'PY'
@@ -352,7 +357,7 @@ jobs:
           json.dump(r, open(p, "w"), indent=2)
           PY
           fi
-          reb=got/review-rebuild-${{ needs.static.outputs.key }}/rebuild.json
+          reb=$(find got -name rebuild.json | head -1)
           args=(--original "$orig" --out out/decision.json --markdown out/report.md --run-url "${{ steps.url.outputs.url }}" --report-url "${{ steps.url.outputs.url }}")
           [ -f "$reb" ] && args+=(--rebuild "$reb")
           if [ ! -f "$reb" ] && [ -z "$REBUILD_ERROR" ]; then
