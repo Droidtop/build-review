@@ -555,3 +555,51 @@ def test_16_bit_ne_fonts_are_not_native_code(tmp_path):
     pe = tmp_path / "a.dll"
     pe.write_bytes(bytes(data[:0x80]) + b"PE\0\0" + b"\0" * 30)
     assert not is_native(ne) and is_native(pe)
+
+
+class _Ref:
+    def __init__(self, name):
+        self.name = name
+
+
+class _Str:
+    def __init__(self, value, callers=()):
+        self.value, self.callers = value, callers
+
+    def get_value(self):
+        return self.value
+
+    def get_xref_from(self):
+        return [(_Ref(c), _Ref("m")) for c in self.callers]
+
+
+class _Dx:
+    """Just enough of androguard's Analysis for _dex: no API calls, no
+    classes, the given strings."""
+    def __init__(self, strings):
+        self.strings = strings
+
+    def find_methods(self, **_):
+        return []
+
+    def get_strings(self):
+        return self.strings
+
+    def get_classes(self):
+        return []
+
+
+def test_su_counts_by_caller_and_dex_strings_still_give_hosts():
+    from review.analysers.apk import _dex
+    p = prof.Profile(repo="Test/repo")
+    # media3's CMCD key and an unreferenced "su" do not count (2974's debug APK).
+    facts = {}
+    out = _dex(_Dx([_Str("su", ["Landroidx/media3/exoplayer/upstream/CmcdData$CmcdRequest;"]),
+                    _Str("su"), _Str("https://example.org/x")]), p, facts, "a.apk")
+    assert not [f for f in out if f.rule.startswith(("api.", "harness."))]
+    assert "example.org" in facts["hosts"]
+    # App code that uses one does, and api_callers_ok names it.
+    out = _dex(_Dx([_Str("/system/xbin/su", ["Lcom/x/Root;"])]), p, {}, "a.apk")
+    assert [f.rule for f in out] == ["api.not-in-purpose.su"]
+    p.api_callers_ok = {"su": {"Lcom/x/Root;": "test"}}
+    assert _dex(_Dx([_Str("/system/xbin/su", ["Lcom/x/Root;"])]), p, {}, "a.apk") == []

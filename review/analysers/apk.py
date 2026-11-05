@@ -228,6 +228,7 @@ def _dex(dx, profile: Profile, facts: dict, name: str) -> list[Finding]:
     # CMCD key "su" (startup) and on a debug-info name with no code use, while
     # droidtop's container script ("exec su -s ...") never matched at all
     # (Droidtop/tracker#901).
+    strings = [sa.get_value() for sa in dx.get_strings()]
     for sa in dx.get_strings():
         if SU_RE.search(sa.get_value()):
             callers = [f"{c.name}->{m.name}" for c, m in sa.get_xref_from()]
