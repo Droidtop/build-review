@@ -45,6 +45,9 @@ CAPA_SEVERITY = {
 }
 
 
+URL_BYTES = __import__("re").compile(rb"(?:https?|wss?|ftp)://([A-Za-z0-9][A-Za-z0-9.-]{1,252}\.[A-Za-z]{2,24})(?=[:/\x00\"' ]|$)")
+
+
 def entropy(data: bytes) -> float:
     if not data:
         return 0.0
@@ -88,6 +91,11 @@ def analyse(root: Path, profile: Profile, facts: dict, rel_base: Path | None = N
                                f"{path.name} is native code the repo's profile does not list.",
                                location=rel, evidence=info.get("arch", ""), category="native"))
         out += _hardening(b, info, rel)
+        # Endpoints in the library's own strings; the endpoints analyser
+        # judges them against the profile, as it does the dex's.
+        hosts = facts.setdefault("hosts", {})
+        for m in URL_BYTES.finditer(path.read_bytes()):
+            hosts.setdefault(m.group(1).decode("ascii").lower().rstrip("."), rel)
         for imp in info["imports"]:
             kind = SENSITIVE_IMPORTS.get(imp)
             if kind and kind not in profile.api and f"native-{kind}" not in profile.api:

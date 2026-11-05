@@ -464,3 +464,14 @@ def test_rebuild_packs_a_plugin_build_tree(tmp_path):
     assert "error=" not in r.stdout, r.stdout + r.stderr
     with tarfile.open(tmp_path / "o" / "t.p.droidplugin.tar.xz") as tf:
         assert sorted(tf.getnames()) == ["classes.jar", "lib/x86_64/liba.so", "manifest.json"]
+
+
+def test_native_strings_give_endpoints(tmp_path):
+    from review.analysers import native
+    lib = tmp_path / "libx.so"
+    shutil.copy("/bin/true", lib)
+    with open(lib, "ab") as fh:
+        fh.write(b"\0https://crash.example.net/report\0not a url: x.y\0")
+    facts = {}
+    native.analyse(tmp_path, _profile(), facts, capa=False)
+    assert facts["hosts"].get("crash.example.net") == "libx.so"
