@@ -91,7 +91,7 @@ def review_artefact(art: Path, kind: str, profile: Profile, facts: dict, facts_o
             if dexes:
                 out += apk.analyse_dex(dexes, profile, facts, art.name)
             for inner in sorted((work / art.name).rglob("*.apk")):
-                out += apk.analyse(str(inner), profile, facts, facts_only)
+                out += _inner_apk(inner, profile, facts, facts_only)
         elif kind == "elf" or kind == "native":
             shutil.copy(art, work / art.name)
         else:
@@ -108,6 +108,31 @@ def review_artefact(art: Path, kind: str, profile: Profile, facts: dict, facts_o
         out += content.scripts(work, RULES / "semgrep")
     finally:
         shutil.rmtree(work, ignore_errors=True)
+    return out
+
+
+# What an APK's manifest declares only matters once the APK is installed.
+# An APK inside a bundle (an Enginehost core's runtime.apk, a resource APK)
+# is never installed: Enginehost loads its code and resources into its own
+# process under its own manifest (engine-bundle-format.md). Its permissions,
+# components and manifest flags are recorded and reported, but they don't
+# block; its dex is judged in full.
+INERT_IN_BUNDLE = ("permission.", "component.", "manifest.debuggable", "manifest.cleartext", "manifest.test-only")
+
+
+def _inner_apk(inner: Path, profile: Profile, facts: dict, facts_only: bool) -> list[Finding]:
+    import dataclasses
+
+    own: dict = {"hosts": facts.setdefault("hosts", {}), "apiCategories": facts.get("apiCategories", [])}
+    found = apk.analyse(str(inner), profile, own, facts_only)
+    facts["apiCategories"] = sorted(set(facts.get("apiCategories", [])) | set(own.get("apiCategories", [])))
+    facts.setdefault("innerApks", {})[inner.name] = {k: own.get(k) for k in (
+        "package", "permissions", "services", "receivers", "providers", "nativeLibs")}
+    out = []
+    for f in found:
+        if f.rule.startswith(INERT_IN_BUNDLE) and f.blocking:
+            f = dataclasses.replace(f, severity="low", title=f"{f.title} (In a bundle, never installed: inert.)")
+        out.append(f)
     return out
 
 

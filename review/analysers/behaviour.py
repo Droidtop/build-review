@@ -15,16 +15,30 @@ BAD_HOST_HINTS = ("pastebin.", "ngrok", "duckdns.", "no-ip.", "trycloudflare.com
                   "api.telegram.org", "webhook.site", "requestbin", "pipedream.net", ".onion", "pool.", "xmr", "stratum")
 
 
+_PSL = None
+
+
 def _real_host(host: str) -> bool:
-    """A placeholder in a URL template ("http://x", "default.url") is not
-    an endpoint: a host needs a dot and a letters-only TLD, or to be an IP."""
+    """Only a real host is an endpoint: an IP, or a name under a public
+    suffix the Public Suffix List knows (publicsuffixlist, reused). URL
+    templates and string fragments ("http://x", "default.url", "www.css")
+    are not."""
+    global _PSL
     try:
         ipaddress.ip_address(host)
         return True
     except ValueError:
         pass
     labels = host.split(".")
-    return len(labels) >= 2 and labels[-1].isalpha() and len(labels[-1]) >= 2 and labels[-1] not in ("url", "local", "invalid", "test")
+    if len(labels) < 2:
+        return False
+    try:
+        if _PSL is None:
+            from publicsuffixlist import PublicSuffixList
+            _PSL = PublicSuffixList()
+        return _PSL.publicsuffix(host, accept_unknown=False) is not None and host != _PSL.publicsuffix(host)
+    except ImportError:
+        return labels[-1].isalpha() and len(labels[-1]) >= 2 and labels[-1] not in ("url", "local", "invalid", "test")
 
 
 def endpoints(facts: dict, profile: Profile) -> list[Finding]:

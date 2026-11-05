@@ -98,7 +98,7 @@ def load(repo: str, root: Path = ROOT) -> Profile:
     # maps, so every line carries its reason). A reason starting "TO
     # IDENTIFY" is no reason: that entry stays a finding.
     reasons: dict = {}
-    for key in ("permissions", "plugin_permissions", "api", "hosts", "native_libs", "exported_ok"):
+    for key in ("permissions", "plugin_permissions", "api", "hosts", "native_libs", "exported_ok", "secrets_ignore"):
         v = data.get(key)
         if isinstance(v, dict):
             reasons[key] = {k: str(r) for k, r in v.items()}

@@ -1,0 +1,18 @@
+# gitleaks' own rules, with an allowlist for what a published build carries
+# on purpose. Each entry says why it's not a secret.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public material in published builds"
+regexTarget = "line"
+regexes = [
+  # Enginehost's signed manifests name the signing key by the SHA-256 of its
+  # public key (engine-bundle-format.md, legacy "signing" block).
+  '''"keySha256"\s*:\s*"[0-9A-Fa-f]{64}"''',
+]
+paths = [
+  # Generated source maps: identifiers like ctrlKey read as keys. A secret in
+  # a map is also in the script it maps, which is still scanned.
+  '''\.js\.map$''',
+]

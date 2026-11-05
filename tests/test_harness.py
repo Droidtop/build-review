@@ -475,3 +475,14 @@ def test_native_strings_give_endpoints(tmp_path):
     facts = {}
     native.analyse(tmp_path, _profile(), facts, capa=False)
     assert facts["hosts"].get("crash.example.net") == "libx.so"
+
+
+def test_endpoints_need_a_public_suffix():
+    from review.analysers.behaviour import _real_host
+    assert _real_host("github.com") and _real_host("streams.videolan.org") and _real_host("203.0.113.9")
+    assert not any(_real_host(h) for h in ("www.css", "www.years", "default.url", "x", "game.enginehost.local"))
+
+
+def test_inner_apk_manifest_findings_do_not_block():
+    from review.static import INERT_IN_BUNDLE
+    assert "permission." in INERT_IN_BUNDLE and "component." in INERT_IN_BUNDLE

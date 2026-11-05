@@ -6,6 +6,7 @@ release's commit), Semgrep (rules/semgrep, over script payloads).
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import tempfile
 from pathlib import Path
@@ -24,6 +25,7 @@ def secrets(root: Path, profile: Profile) -> list[Finding]:
         report = Path(tmp) / "gitleaks.json"
         try:
             run(["gitleaks", "dir", str(root), "--no-banner", "--redact=80", "--report-format", "json",
+                 "--config", str(Path(__file__).resolve().parent.parent.parent / "rules" / "gitleaks.toml"),
                  "--report-path", str(report), "--exit-code", "0", "--max-target-megabytes", "64"], timeout=1800)
             data = json.loads(report.read_text() or "[]")
         except Exception as e:  # noqa: BLE001
@@ -34,9 +36,10 @@ def secrets(root: Path, profile: Profile) -> list[Finding]:
             rel = str(Path(rel).relative_to(root))
         except ValueError:
             pass
-        if leak.get("Fingerprint", "").split(":")[-1] in profile.secrets_ignore or rel.endswith(PUBLIC_OK):
-            continue
         rule = leak.get("RuleID", "generic")
+        # Profile entries are "<path glob>:<rule id>", each with its reason.
+        if rel.endswith(PUBLIC_OK) or any(fnmatch.fnmatch(f"{rel}:{rule}", g) for g in profile.secrets_ignore):
+            continue
         sev = "critical" if "private-key" in rule or rule in ("pkcs12-file",) else "high"
         out.append(Finding("secrets", f"secret.{rule}", sev,
                            f"gitleaks finds a {rule} secret embedded in the build.",

@@ -46,7 +46,7 @@ native_libs: []
 exported_ok: []
 obfuscation_ok: false        # true only for an R8/ProGuard-style rename the lane states
 cve_ignore: {}               # {CVE-id: reason}
-secrets_ignore: []           # gitleaks fingerprints, each with its reason in a comment
+secrets_ignore: []           # "<path glob>:<gitleaks rule>", each with its reason in a comment
 block: []                    # rule ids that block for this repo even below high
 # Lists can instead be {name: reason} maps; a reason "TO IDENTIFY ..." keeps
 # the entry a finding.
