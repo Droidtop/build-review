@@ -185,13 +185,21 @@ retest this time. This wasn't a key theft, it was an exposure in a secure
 environment". So the backlog in #876 is not run. The runner exists for the
 next revocation, and for a pilot dry run (`limit: 1`).
 
-It only reads the inventory issue (default Droidtop/tracker#876): its body
-and continuation comments, carrying the `### owner/repo` heading across. It
-takes the unticked lines that match `repos` and `tags`, up to `limit` (256
-at most per run), and reviews each in audit mode. It writes nothing back to
-the inventory. The results are `build-review-results.json`, the run's
-artifact. When `dry-run` is off, the file is also attached to this repo's
-`audit-results` release. `dry-run` is on by default.
+It never reads the tracker. The tracker is private and the harness has no
+token, so a run's releases come from one of two places:
+
+- `releases`: text the coordinator pastes into the run. This is either lines
+  copied from the inventory (#876's checklist under its `### owner/repo`
+  headings; ticked lines are skipped unless `redo` is set), or one
+  `owner/repo@tag` per line.
+- Nothing pasted: the releases of the repos named in `repos`, newest first,
+  read from those repos (exact names).
+
+`repos`, `tags` and `limit` (256 at most per run) narrow the list, and each
+release is reviewed in audit mode. The results are
+`build-review-results.json`, the run's artifact. When `dry-run` is off, the
+file is also attached to this repo's `audit-results` release. `dry-run` is
+on by default.
 
 ### Publishing with the catalog
 

@@ -213,16 +213,27 @@ COMMENT = """- [ ] `build-128` 2026-10-31 | sha256 list only
 """
 
 
-def test_batch_parse_carries_heading_into_comment():
-    parts = [("body", BODY, None, None), ("1", COMMENT, 1, batch.last_repo(BODY))]
-    items = batch.items_of(parts)
+def test_batch_parse_pasted_inventory_lines_and_pairs():
+    items = batch.parse(BODY + COMMENT + "Droidtop/enginehost@v0.1.5\n- T/x@build-9\n", "pasted")
     keys = [i.key for i in items]
-    assert "Droidtop/droidtop-agent@build-128" in keys
+    assert "Droidtop/droidtop-agent@build-128" in keys      # heading carried down
     assert "gamegrab-sources/catalog@v3" in keys
+    assert "Droidtop/enginehost@v0.1.5" in keys and "T/x@build-9" in keys
     planned = [i.key for i in batch.plan(items, repos="Droidtop/*")]
-    assert "Droidtop/droidtop-plugin-syncthing@plugin-v1.0.0" not in planned   # already ticked
+    assert "Droidtop/droidtop-plugin-syncthing@plugin-v1.0.0" not in planned   # ticked
     assert "gamegrab-sources/catalog@v3" not in planned
     assert len(batch.plan(items, limit=1)) == 1
+
+
+def test_batch_from_releases_newest_first_and_exact_names():
+    class FakeGH:
+        def releases(self, repo):
+            return [{"tag_name": "v1", "published_at": "2026-01-01"}, {"tag_name": "v3", "published_at": "2026-03-01"},
+                    {"tag_name": "d", "published_at": "2026-04-01", "draft": True}]
+    items = batch.from_releases(FakeGH(), "T/r")
+    assert [i.tag for i in items] == ["v3", "v1"]
+    with pytest.raises(SystemExit):
+        batch.from_releases(FakeGH(), "T/*")
 
 
 def test_profile_reason_maps_and_to_identify(tmp_path):

@@ -1,12 +1,12 @@
 name: Build review batch
 
-# Works through an inventory issue's checklist (the forced audit after a key
-# revocation, Droidtop/tracker#550): reviews each selected release through
-# review-release.yml and publishes build-review-results.json, which goes
-# out with the catalog beside the revocation list. It only reads the
-# inventory and writes nothing to the tracker (owner, 2026-11-05: "Drop the
-# token, file the issues yourself"); the coordinator files the issues from
-# the results.
+# The forced audit after a key revocation (Droidtop/tracker#550): reviews
+# each selected release through review-release.yml and publishes
+# build-review-results.json, which goes out with the catalog beside the
+# revocation list. It never touches the tracker, which is private, and has
+# no token (owner, 2026-11-05: "Drop the token, file the issues yourself").
+# The coordinator pastes the inventory's lines into `releases` and files the
+# issues from the results.
 #
 # Only ever started by hand. Nothing runs on a schedule or on push: which
 # releases to review, and when, is the coordinator's call (owner,
@@ -15,11 +15,13 @@ name: Build review batch
 on:
   workflow_dispatch:
     inputs:
-      inventory:
-        description: The inventory issue, owner/repo#number
-        default: Droidtop/tracker#876
+      releases:
+        description: >
+          Releases to review, pasted: inventory lines (under their "### owner/repo" headings) or one
+          owner/repo@tag per line. Empty: the named repos' own releases, newest first.
+        default: ""
       repos:
-        description: Repos to take, comma-separated globs (e.g. Droidtop/droidtop-plugin-syncthing)
+        description: Repos to take, comma-separated (exact names when no releases are pasted)
         required: true
       tags:
         description: Tags to take, comma-separated globs
@@ -62,9 +64,15 @@ jobs:
       - id: plan
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASES: ${{ inputs.releases }}
+          REPOS: ${{ inputs.repos }}
+          TAGS: ${{ inputs.tags }}
+          LIMIT: ${{ inputs.limit }}
         run: |
-          python -m review batch-plan --inventory "${{ inputs.inventory }}" --repos "${{ inputs.repos }}" \
-            --tags "${{ inputs.tags }}" --limit "${{ inputs.limit }}" ${{ inputs.redo && '--redo' || '' }}
+          printf '%s\n' "$RELEASES" > "$RUNNER_TEMP/releases.txt"
+          redo=(); if [ "${{ inputs.redo }}" = true ]; then redo=(--redo); fi
+          python -m review batch-plan --releases-file "$RUNNER_TEMP/releases.txt" --repos "$REPOS" \
+            --tags "$TAGS" --limit "$LIMIT" "${redo[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   review:
     needs: plan

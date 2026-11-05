@@ -145,16 +145,18 @@ def cmd_needs_rebuild(a):
 
 
 def cmd_batch_plan(a):
-    from .gh import GitHub
-
-    owner_repo, num = a.inventory.split("#")
-    parts = batch.load_inventory(GitHub(), owner_repo, int(num), a.comments)
-    items = batch.plan(batch.items_of(parts), a.repos, a.tags, a.limit, a.redo)
+    text = Path(a.releases_file).read_text() if a.releases_file and Path(a.releases_file).exists() else ""
+    if text.strip():
+        items = batch.parse(text, "pasted")
+    else:
+        from .gh import GitHub
+        items = batch.from_releases(GitHub(), a.repos)
+    items = batch.plan(items, a.repos, a.tags, a.limit, a.redo)
     matrix = [{"repo": i.repo, "tag": i.tag} for i in items]
     if len(matrix) > 256:
         sys.exit(f"{len(matrix)} releases selected; a run takes at most 256 (GitHub's matrix limit). "
                  "Narrow with repos/tags/limit.")
-    print(f"{len(matrix)} release(s) planned")
+    print(f"{len(matrix)} release(s) planned: " + ", ".join(f"{m['repo']}@{m['tag']}" for m in matrix))
     _out("matrix", json.dumps({"include": matrix}))
     _out("count", str(len(matrix)))
 
@@ -210,10 +212,9 @@ def main(argv=None):
     s.set_defaults(f=cmd_decide)
 
     s = sub.add_parser("batch-plan")
-    s.add_argument("--inventory", required=True, help="owner/repo#number")
+    s.add_argument("--releases-file", help="pasted inventory lines or owner/repo@tag lines; empty: list releases")
     s.add_argument("--repos", default="*"); s.add_argument("--tags", default="*")
     s.add_argument("--limit", type=int, default=0); s.add_argument("--redo", action="store_true")
-    s.add_argument("--comments", type=int, default=2)
     s.set_defaults(f=cmd_batch_plan)
 
     s = sub.add_parser("publish")

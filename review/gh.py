@@ -82,10 +82,3 @@ class GitHub:
         while obj["type"] == "tag":
             obj = self.get(obj["url"])["object"]
         return obj["sha"]
-
-    # Issues
-    def issue(self, repo: str, number: int) -> dict:
-        return self.get(f"/repos/{repo}/issues/{number}")
-
-    def comments(self, repo: str, number: int) -> list[dict]:
-        return list(self.paged(f"/repos/{repo}/issues/{number}/comments"))

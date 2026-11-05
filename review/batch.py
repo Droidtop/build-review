@@ -1,14 +1,19 @@
-"""The batch runner: works through an inventory issue's checklist.
+"""The batch runner's planner: which releases a run reviews.
 
-The inventory (Droidtop/tracker#876) is one issue whose checklist runs on
-through its first comments past GitHub's body limit. Each line is
+It never reads the tracker. The tracker is private and the harness has no
+token (owner, 2026-11-05: "Drop the token, file the issues yourself"), so a
+run's releases come either from text the coordinator pastes into the run,
+or from the named repos' own public releases.
 
+Pasted text can be lines copied from an inventory issue (Droidtop/tracker#876
+style, a checklist under `### <owner>/<repo>` headings):
+
+    ### Droidtop/droidtop (396)
     - [ ] `<tag>` <date>[ pre] | <signer evidence>
 
-under a `### <owner>/<repo> (<count>)` heading. The runner only reads it: it
-plans which lines to review (unticked, filtered), and the outcomes go into
-build-review-results.json, never back into the issue (owner, 2026-11-05:
-"Drop the token, file the issues yourself").
+or one `<owner>/<repo>@<tag>` per line. Ticked lines are skipped unless
+`redo` is set. Outcomes go into build-review-results.json, never back into
+any issue.
 """
 from __future__ import annotations
 
@@ -16,6 +21,7 @@ import fnmatch
 import re
 from dataclasses import dataclass
 
+PAIR_RE = re.compile(r"^\s*(?:-\s*)?(?P<repo>[\w.-]+/[\w.-]+)@(?P<tag>\S+)\s*$")
 HEAD_RE = re.compile(r"^###\s+([\w.-]+/[\w.-]+)\b")
 LINE_RE = re.compile(r"^\s*-\s\[(?P<box>[ xX])\]\s+`(?P<tag>[^`]+)`(?P<rest>.*)$")
 OUTCOMES = ("approved", "rebuilt", "refused")
@@ -26,7 +32,7 @@ class Item:
     repo: str
     tag: str
     done: bool
-    source: str      # "body" or a comment id
+    source: str      # "pasted" or "releases"
     line_no: int
     evidence: str
 
@@ -43,6 +49,10 @@ def parse(text: str, source: str, repo: str | None = None) -> list[Item]:
         h = HEAD_RE.match(line)
         if h:
             repo = h.group(1)
+            continue
+        pair = PAIR_RE.match(line)
+        if pair:
+            items.append(Item(pair.group("repo"), pair.group("tag"), False, source, i, ""))
             continue
         m = LINE_RE.match(line)
         if m and repo:
@@ -61,38 +71,15 @@ def plan(items: list[Item], repos: str = "*", tags: str = "*", limit: int = 0, r
     return out[:limit] if limit else out
 
 
-def last_repo(text: str, repo: str | None = None) -> str | None:
-    for line in text.splitlines():
-        h = HEAD_RE.match(line)
-        if h:
-            repo = h.group(1)
-    return repo
-
-
-def load_inventory(gh, repo: str, number: int, comment_limit: int = 2):
-    """[(source, text, comment_id|None, repo_in_force)] for the body and the
-    first comments by the issue's author that carry checklist lines: the
-    inventory's own continuation past the body limit."""
-    issue = gh.issue(repo, number)
-    author = (issue.get("user") or {}).get("login")
-    body = issue.get("body") or ""
-    parts = [("body", body, None, None)]
-    current = last_repo(body)
-    taken = 0
-    for c in gh.comments(repo, number):
-        if taken >= comment_limit:
-            break
-        text = c.get("body") or ""
-        if (c.get("user") or {}).get("login") != author or not any(LINE_RE.match(l) for l in text.splitlines()):
-            continue
-        parts.append((str(c["id"]), text, c["id"], current))
-        current = last_repo(text, current)
-        taken += 1
-    return parts
-
-
-def items_of(parts) -> list[Item]:
-    out = []
-    for source, text, _cid, repo in parts:
-        out += parse(text, source, repo)
-    return out
+def from_releases(gh, repos: str, limit: int = 0) -> list[Item]:
+    """The named repos' published releases, newest first (exact names: a
+    run that lists releases names its repos)."""
+    items = []
+    for repo in [r.strip() for r in repos.split(",") if r.strip()]:
+        if any(c in repo for c in "*?["):
+            raise SystemExit(f"{repo}: name repos exactly when no releases are pasted")
+        rels = sorted((r for r in gh.releases(repo) if not r.get("draft")),
+                      key=lambda r: r.get("published_at") or r.get("created_at") or "", reverse=True)
+        for n, r in enumerate(rels):
+            items.append(Item(repo, r["tag_name"], False, "releases", n, ""))
+    return items
