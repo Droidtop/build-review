@@ -232,7 +232,17 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.dynamic.result == 'success'
         with: {name: "review-dynamic-${{ needs.static.outputs.key }}", path: "${{ runner.temp }}/dynout"}
-      - run: if [ -f "$RUNNER_TEMP/dynout/original.json" ]; then cp "$RUNNER_TEMP/dynout/original.json" "$RUNNER_TEMP/out/original.json"; fi
+      - name: Keep only the original's record
+        # The rebuild reads original.json alone. The static artifact also holds
+        # the downloaded release (droidtop's is about 400 MB zipped), which
+        # would sit on the disk the repo's own build needs: pilot run
+        # 42002552036's rebuild lost its runner ("received a shutdown signal")
+        # in R8, 11 minutes into droidtop's build, where droidtop's own CI on
+        # the same runner type finishes.
+        run: |
+          if [ -f "$RUNNER_TEMP/dynout/original.json" ]; then cp "$RUNNER_TEMP/dynout/original.json" "$RUNNER_TEMP/out/original.json"; fi
+          find "$RUNNER_TEMP/out" -mindepth 1 -maxdepth 1 ! -name original.json -exec rm -rf {} +
+          rm -rf "$RUNNER_TEMP/dynout"
       - id: need
         run: PYTHONPATH="$RUNNER_TEMP/harness" python -m review needs-rebuild --record "$RUNNER_TEMP/out/original.json"
       - id: profile
@@ -272,6 +282,11 @@ jobs:
       - name: act, for replaying the repo's own build job
         if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'act'
         run: bash "$RUNNER_TEMP/harness/scripts/install-tools.sh" --act-only "$RUNNER_TEMP/review-bin"
+      - name: Report the runner's cores, memory and disk
+        # So a rebuild that loses its runner leaves the numbers in its log
+        # (droidtop's own build reports cores and memory the same way).
+        if: steps.need.outputs.rebuild == 'true'
+        run: nproc; free -m; df -h / "$RUNNER_TEMP"
       - name: Build (no secrets)
         id: build
         if: steps.need.outputs.rebuild == 'true'
