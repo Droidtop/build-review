@@ -33,7 +33,8 @@ def kind_of(path: str | Path) -> str:
     """apk | plugin-bundle | engine-bundle | catalog | archive | elf | unknown"""
     p = str(path).lower()
     with open(path, "rb") as fh:
-        head = fh.read(4)
+        head8 = fh.read(8)
+    head = head8[:4]
     if p.endswith((".apk", ".aab")):
         return "apk"
     if p.endswith(".droidplugin.tar.xz") or p.endswith(".droidplugin"):
@@ -44,10 +45,15 @@ def kind_of(path: str | Path) -> str:
         return "catalog"
     if head == b"\x7fELF":
         return "elf"
+    if head[:2] == b"MZ":
+        from .analysers.native import is_pe
+        if is_pe(Path(path)):
+            return "native"   # a PE program or library (.exe, .dll)
     if head in (b"\x28\xb5\x2f\xfd", b"\xed\xab\xee\xdb") or head[:2] == b"7z":
         return "archive"   # zstd (.tzst, .wcp), rpm, 7z: read through bsdtar
-    if head in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
-        return "native"    # Mach-O (thin or universal)
+    if head in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe") or (
+            head == b"\xca\xfe\xba\xbe" and int.from_bytes(head8[4:8], "big") <= 20):
+        return "native"    # Mach-O, thin or universal (not a Java class file, which shares CAFEBABE)
     if head[:2] == b"PK" or p.endswith((".tar.xz", ".tar.gz", ".tgz", ".tar.zst", ".zip", ".tar")):
         # Enginehost core bundles ship as zips or tarballs beside
         # enginehost-public-key.json; the caller can say so explicitly.

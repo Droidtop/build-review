@@ -94,4 +94,6 @@ rules:
     severity: ERROR
     metadata: {severity: critical, category: malicious}
     message: Downloads a script and pipes it into a shell.
-    pattern-regex: '(curl|wget)[^|\n]*\|\s*(ba|z)?sh'
+    # Code lines only: an installer's usage comment ("#   curl ... | sh")
+    # tells a person how to run it and runs nothing (windowcast install.sh).
+    pattern-regex: '(?m)^(?![ \t]*#)[^\n#]*\b(curl|wget)\b[^|\n#]*\|\s*(ba|z)?sh\b'

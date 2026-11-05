@@ -536,3 +536,22 @@ def test_bsdtar_packages_rooted_at_slash_but_dotdot_refused(tmp_path):
                     "../d/ok.txt"], check=True)
     found = extract(tmp_path / "b.cpio", tmp_path / "out2")
     assert any(f.rule == "archive.path-escape" for f in found)
+
+
+def test_java_class_files_are_not_mach_o(tmp_path):
+    from review.analysers.native import is_native
+    cls = tmp_path / "A.class"
+    cls.write_bytes(b"\xca\xfe\xba\xbe\x00\x00\x00\x34" + b"\0" * 32)       # Java 8 class
+    fat = tmp_path / "tool"
+    fat.write_bytes(b"\xca\xfe\xba\xbe\x00\x00\x00\x02" + b"\0" * 32)       # universal Mach-O, 2 archs
+    assert not is_native(cls) and is_native(fat)
+
+
+def test_16_bit_ne_fonts_are_not_native_code(tmp_path):
+    from review.analysers.native import is_native
+    ne = tmp_path / "coure.fon"
+    data = bytearray(b"MZ" + b"\0" * 0x3a + (0x80).to_bytes(4, "little") + b"\0" * (0x80 - 0x40) + b"NE" + b"\0" * 30)
+    ne.write_bytes(bytes(data))
+    pe = tmp_path / "a.dll"
+    pe.write_bytes(bytes(data[:0x80]) + b"PE\0\0" + b"\0" * 30)
+    assert not is_native(ne) and is_native(pe)

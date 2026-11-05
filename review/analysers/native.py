@@ -55,15 +55,38 @@ def entropy(data: bytes) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(data).values())
 
 
+def is_macho_fat(head: bytes) -> bool:
+    """CAFEBABE opens both a universal Mach-O and a Java class file. The next
+    four bytes tell them apart: a fat header's architecture count (a handful),
+    a class file's version (major 45 and up)."""
+    return len(head) >= 8 and head[:4] == b"\xca\xfe\xba\xbe" and int.from_bytes(head[4:8], "big") <= 20
+
+
+def is_pe(path: Path) -> bool:
+    """MZ alone also opens DOS programs and 16-bit NE files (Windows 3.x
+    fonts, .fon, which Wine ships). PE is MZ whose e_lfanew (offset 0x3c)
+    points at "PE\\0\\0"."""
+    try:
+        with open(path, "rb") as fh:
+            if fh.read(2) != b"MZ":
+                return False
+            fh.seek(0x3C)
+            off = int.from_bytes(fh.read(4), "little")
+            fh.seek(off)
+            return fh.read(4) == b"PE\0\0"
+    except (OSError, ValueError):
+        return False
+
+
 def is_native(path: Path) -> bool:
     try:
         with open(path, "rb") as fh:
-            head = fh.read(4)
+            head = fh.read(8)
     except OSError:
         return False
     # ELF, PE, and Mach-O (thin and universal): LIEF parses all of them.
-    return head == b"\x7fELF" or head[:2] == b"MZ" or head in (
-        b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe")
+    return head[:4] == b"\x7fELF" or (head[:2] == b"MZ" and is_pe(path)) or head[:4] in (
+        b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe") or is_macho_fat(head)
 
 
 def analyse(root: Path, profile: Profile, facts: dict, rel_base: Path | None = None,
