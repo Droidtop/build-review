@@ -9,3 +9,15 @@ purpose: >
 build:
   workflow: .github/workflows/android-plugin.yml   # the core's own build job (it uploads build/unsigned.tar)
   job: android
+api:
+  audio-record: "Observed in the bundle's dex: SDL's audio capture (SDLAudioManager). Cores lane to confirm a game can record, or that it never asks"
+  clipboard-read: "Observed in the bundle's dex: SDL's clipboard support. Cores lane to confirm"
+native_libs:   # observed in the newest release; upstream engine and its dependencies (cores lane to confirm)
+  "libSDL2.so": "Part of the core's engine runtime"
+  "libags.so": "Part of the core's engine runtime"
+  "libengine.so": "Part of the core's engine runtime"
+hosts:   # in the engine's and its libraries' own strings (links, docs); cores lane to confirm none is contacted
+  android.googlesource.com: "A string in the engine or a library it bundles"
+  icculus.org: "A string in the engine or a library it bundles"
+  modplug-xmms.sourceforge.net: "A string in the engine or a library it bundles"
+  www.icculus.org: "A string in the engine or a library it bundles"

@@ -9,3 +9,5 @@ purpose: >
 build:
   workflow: .github/workflows/enginehost-android.yml   # the core's own build job (it uploads build/unsigned.tar)
   job: bundle
+api:
+  webview-js-bridge: "The page talks to Enginehost's web host through the WebView bridge (plugin-web GameWebView.open)"
