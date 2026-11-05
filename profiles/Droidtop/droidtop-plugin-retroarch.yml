@@ -1,0 +1,20 @@
+# RetroArch manager (droidtop.retroarch). DRAFT by the harness lane (2026-11-05), read from
+# plugin-unstable (droidtop.retroarch.droidplugin.tar.xz) and the repo at d67f7e3. Host-API permissions
+# carry the manifest's own reasons. The plugins lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/droidtop-plugin-retroarch
+extends: _kinds/droidtop-plugin
+purpose: >
+  Gets RetroArch cores for your systems, opens RetroArch, and adds save, load and shader controls
+  for the running game. (manifest.template.json)
+plugin_permissions:
+  apps.check: "Finds out which RetroArch you have installed (manifest.template.json)"
+  apps.launch: "Opens RetroArch from its panel (manifest.template.json)"
+  retroarch.commands: "Saves and loads states, changes the slot, fast-forward and shaders in the running game from the companion screen (manifest.template.json)"
+  apps.intents.out: "Starts RetroArch with the core and game you chose (manifest.template.json)"
+  net.domains: "Downloads cores from libretro's build server (manifest.template.json)"
+  library.read: "Lists your systems and which of them RetroArch launches, so its panel shows every system and not only the ones you changed (manifest.template.json)"
+  priv.shell.root: "Puts a downloaded core into RetroArch's own cores folder, which only root can reach. Optional: without it you install the core from RetroArch itself. (manifest.template.json)"
+hosts:
+  buildbot.libretro.com: "Cores come down through droidtop from libretro's build server only, as declared (RetroArchPlugin.kt:32, net.domains)"
+  www.retroarch.com: "Links to RetroArch's own site"
+  github.com: "Links"

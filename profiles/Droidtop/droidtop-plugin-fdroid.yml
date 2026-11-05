@@ -1,0 +1,19 @@
+# F-Droid repositories (droidtop.fdroid). DRAFT by the harness lane (2026-11-05), read from
+# plugin-unstable (droidtop.fdroid.droidplugin.tar.xz) and the repo at 8fe2652. Host-API permissions
+# carry the manifest's own reasons. The plugins lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/droidtop-plugin-fdroid
+extends: _kinds/droidtop-plugin
+purpose: >
+  Installs and updates Android apps from F-Droid and the F-Droid repositories you add.
+  (manifest.template.json)
+plugin_permissions:
+  net.any: "Reads the repositories you add, which can be on any website (manifest.template.json)"
+  intents.in: "Opens F-Droid repository links (fdroidrepos://, f-droid.org style repository addresses) so you can review and add the repository (manifest.template.json)"
+hosts:
+  f-droid.org: "The main F-Droid repository"
+  apt.izzysoft.de: "IzzyOnDroid, a known repository with its pinned fingerprint (FdroidPlugin.kt:193)"
+  guardianproject.info: "Guardian Project, a known repository with its pinned fingerprint (FdroidPlugin.kt:195)"
+  microg.org: "microG, a known repository with its pinned fingerprint (FdroidPlugin.kt:197)"
+  archive.newpipe.net: "NewPipe, a known repository with its pinned fingerprint (FdroidPlugin.kt:199)"
+  briarproject.org: "Briar, a known repository with its pinned fingerprint (FdroidPlugin.kt:201)"
+  fdroid.link: "Repository share links are parsed, not fetched (RepoLinks.kt:25)"

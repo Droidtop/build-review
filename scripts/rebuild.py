@@ -27,6 +27,7 @@ the release as not rebuildable instead of the job failing.
 """
 from __future__ import annotations
 
+import fnmatch
 import glob
 import io
 import json
@@ -42,6 +43,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from review import profile as prof  # noqa: E402
+
+
+ORIGINALS: list[dict] = []   # the original review's artefacts: names and kinds
 
 
 def fail(reason: str) -> None:
@@ -74,6 +78,12 @@ def run_act(src: Path, build: dict, env: dict) -> Path:
     if not act:
         fail("act is not installed (scripts/install-tools.sh)")
     wf, job = build.get("workflow"), build.get("job")
+    # A repo that builds several bundles in one workflow, one job each (the
+    # test fixtures): `jobs` maps an asset pattern to its job.
+    for pattern, j in (build.get("jobs") or {}).items():
+        if any(fnmatch.fnmatch(a["name"], pattern) for a in ORIGINALS):
+            job = j
+            break
     if not wf or not job or not (src / wf).is_file():
         fail(f"the profile's workflow {wf!r} (job {job!r}) is not in the source at that commit")
     art = Path(tempfile.mkdtemp(prefix="act-artifacts-"))
@@ -125,13 +135,14 @@ def main() -> None:
     if not src.is_dir():
         fail("the source at that commit could not be checked out")
     env = clean_env()
+    ORIGINALS[:] = json.loads(record.read_text()).get("artefacts", [])
     if build.get("setup") == "act":
         root = run_act(src, build, env)
     elif build.get("command"):
         root = run_command(src, build["command"], env)
     else:
         fail("the repo's profile gives no way to build it")
-    originals = json.loads(record.read_text()).get("artefacts", [])
+    originals = ORIGINALS
     outputs = build.get("outputs") or []
     if isinstance(outputs, list):
         outputs = {g: None for g in outputs}

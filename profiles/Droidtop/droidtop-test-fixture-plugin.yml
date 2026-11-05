@@ -1,0 +1,21 @@
+# droidtop's test fixture plugins (dtfixture.python, .native, .flutter, .gpu). DRAFT by the
+# harness lane (2026-11-05), read from the repo at 6087311 (fixtures.yml, each fixture's
+# manifest.template.json). The plugins lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/droidtop-test-fixture-plugin
+extends: _kinds/droidtop-plugin
+purpose: >
+  Fixture plugins droidtop's own tests install, one per plugin kind (python, native_bundle,
+  flutter_embed, and a GPU flutter_embed), so the plugin host is tested against real bundles.
+build:
+  workflow: .github/workflows/fixtures.yml
+  jobs:   # one job per fixture (fixtures.yml)
+    "dtfixture.python.droidplugin.tar.xz": python
+    "dtfixture.native.droidplugin.tar.xz": native
+    "dtfixture.flutter.droidplugin.tar.xz": flutter
+    "dtfixture.gpu.droidplugin.tar.xz": gpu
+plugin_permissions:
+  overlay.toast: "Says hello when you press Say hello as a toast on its panel (dtfixture.python)"
+  net.state: "Shows on its panel whether you are online (dtfixture.python)"
+  library.read: "Puts your favourites on a shelf on Home and names the game on its page (dtfixture.native)"
+  vault.own: "Remembers the word you give it on its panel (dtfixture.native)"
+  gpu.render: "Draw its screen with the graphics chip, so ui.main renders with hardware instead of software. Optional: without it the fixture still runs and draws in software. (dtfixture.gpu)"

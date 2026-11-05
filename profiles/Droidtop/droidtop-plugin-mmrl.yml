@@ -1,0 +1,20 @@
+# Root modules (droidtop.mmrl-modules). DRAFT by the harness lane (2026-11-05), read from
+# plugin-unstable (droidtop.mmrl-modules.droidplugin.tar.xz) and the repo at e5b2ffe. Host-API permissions
+# carry the manifest's own reasons. The plugins lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/droidtop-plugin-mmrl
+extends: _kinds/droidtop-plugin
+purpose: >
+  Lists your Magisk, KernelSU or APatch modules, turns them on and off, checks them for updates
+  and installs new ones. On a device without root it stays out of the way.
+  (manifest.template.json)
+build:
+  workflow: .github/workflows/plugin-bundle.yml   # the plugin's own bundle job lives here
+  job: bundle
+plugin_permissions: {}
+# Not stated here, on purpose: its dex runs `su -c` directly (RootShell.exec,
+# from ModuleManager and RootProvider) under a contract 3 manifest that
+# declares requestsRoot and no priv.shell.root. That bypasses droidtop's root
+# approval (plugin-api.md 2.7 point 4: the requestsRoot shim is not offered
+# to contract 2+), so the su and exec findings stay until it is fixed in code.
+hosts:
+  github.com: "Upstream attribution in the code (MmrlPlugin.kt:19)"

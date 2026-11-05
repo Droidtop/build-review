@@ -1,0 +1,19 @@
+# Shizuku (droidtop.shizuku-bridge). DRAFT by the harness lane (2026-11-05), read from
+# plugin-unstable (droidtop.shizuku-bridge.droidplugin.tar.xz) and the repo at e6cf0cb. Host-API permissions
+# carry the manifest's own reasons. The plugins lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/droidtop-plugin-shizuku
+extends: _kinds/droidtop-plugin
+purpose: >
+  Lets droidtop and the plugins you allow use Shizuku for system-level actions, such as closing
+  another app's game. (manifest.template.json)
+build:
+  workflow: .github/workflows/plugin-bundle.yml   # the plugin's own bundle job lives here
+  job: bundle
+plugin_permissions:
+  apps.check: "See whether Shizuku is installed (manifest.template.json)"
+  apps.launch: "Open Shizuku so you can start it and allow droidtop (manifest.template.json)"
+  host.full_trust: "Talks to Shizuku's binder from droidtop's own process, which is where Shizuku allows droidtop (manifest.template.json)"
+  os.shizuku: "Reaches Shizuku through droidtop, which makes only the calls this plugin's commands need (manifest.template.json)"
+  plugins.export_privileged: "Lets other plugins and droidtop run commands through Shizuku, as the system (adb) or, when Shizuku runs as root, as root, each only after you allow it (manifest.template.json)"
+hosts:
+  github.com: "Upstream attribution in the code (ShizukuPlugin.kt:19)"
