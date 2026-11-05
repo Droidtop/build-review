@@ -97,13 +97,13 @@ exported_ok:
   dev.droidtop.pluginhost.AppInterfaceDoorService: "Door for app interface plugins; answers only an installed, approved, enabled, verified plugin's app, carries no data (plugin-api.md 1.3, Droidtop/tracker#547)"
   com.android.launcher3.notification.NotificationListener: "Behind BIND_NOTIFICATION_LISTENER_SERVICE: notification dots"
   org.pocketworkstation.pckeyboard.LatinIME: "Behind BIND_INPUT_METHOD: droidtop's keyboard (SPEC 6a)"
-  # dev.droidtop.app.EnginehostGameEndedReceiver: NOT ok as is (see above): exported with no permission, and its saveFolder extra is copied from
   dev.droidtop.app.UpdateNowReceiver: "Behind android.permission.DUMP: adb/rig trigger for an update check"
   com.android.launcher3.SessionCommitReceiver: "Launcher3: new installs added to the home screen"
   com.android.launcher3.AppWidgetsRestoredReceiver: "Launcher3: widget restore after backup"
   androidx.profileinstaller.ProfileInstallReceiver: "AndroidX, behind DUMP"
   dev.droidtop.pluginhost.DroidtopShizukuProvider: "Shizuku's binder hand-off, behind INTERACT_ACROSS_USERS_FULL"
   com.android.launcher3.LauncherProvider: "Behind signatureOrSystem READ/WRITE_SETTINGS (shell-default)"
+  dev.droidtop.app.EnginehostGameEndedReceiver: "Enginehost's game-ended report; trusted only to upload the folder droidtop passed (#885)"
   com.android.launcher3.graphics.LauncherCustomizationProvider: "Behind BIND_WALLPAPER (Launcher3 grid options)"
   # com.android.launcher3.testing.TestInformationProvider: removed (droidtop ci/manifest-review-550).
 
@@ -155,8 +155,10 @@ native_libs:  # both ABIs, arm64-v8a and x86_64
   libdatastore_shared_counter.so: "AndroidX DataStore"
   libnrb.so: "TO IDENTIFY: not built by droidtop; only JNI_OnLoad exported; loaded by a dependency"
 
-# EnginehostGameEndedReceiver is deliberately not in exported_ok: the lane
-# found it should be fixed in code (https://github.com/Droidtop/tracker/issues/550#issuecomment-6647163484).
+# EnginehostGameEndedReceiver is in exported_ok from droidtop batch 1104n
+# (ci/game-ended-guard, Droidtop/tracker#885): a broadcast is trusted only
+# to start the upload of the folder droidtop passed. Builds before it were
+# judged without this entry.
 
 api:
   exec: "The no-root Linux runtime starts proot and its processes (SPEC 3, ProotRuntime)"
