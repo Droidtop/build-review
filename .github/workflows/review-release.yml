@@ -210,29 +210,41 @@ jobs:
     outputs:
       ran: ${{ steps.need.outputs.rebuild }}
       error: ${{ steps.build.outputs.error }}
+    # The repo under review is checked out at the workspace root, as its own
+    # CI checks it out: its own setup action (droidtop's android-setup) runs
+    # scripts by paths relative to that root. The harness and the review's
+    # files live outside the workspace, under the runner's temp folder, so the
+    # repo's checkout neither wipes them nor gets them mixed in (pilot run
+    # 41981798479: "build-scripts/build-vendor-deps.sh: No such file").
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {repository: Droidtop/build-review, ref: "${{ inputs.harness-ref }}", path: harness, persist-credentials: false}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with: {python-version: "3.12"}
-      - run: python -m pip install -q pyyaml==6.0.2
+      - name: Harness, outside the workspace
+        env:
+          REF: ${{ inputs.harness-ref }}
+        run: |
+          h="$RUNNER_TEMP/harness"
+          git init -q "$h" && git -C "$h" remote add origin https://github.com/Droidtop/build-review
+          git -C "$h" fetch -q --depth 1 origin "$REF" && git -C "$h" checkout -q FETCH_HEAD
+          python -m pip install -q pyyaml==6.0.2
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with: {name: "review-static-${{ needs.static.outputs.key }}", path: out}
+        with: {name: "review-static-${{ needs.static.outputs.key }}", path: "${{ runner.temp }}/out"}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.dynamic.result == 'success'
-        with: {name: "review-dynamic-${{ needs.static.outputs.key }}", path: dynout}
-      - run: if [ -f dynout/original.json ]; then cp dynout/original.json out/original.json; fi
+        with: {name: "review-dynamic-${{ needs.static.outputs.key }}", path: "${{ runner.temp }}/dynout"}
+      - run: if [ -f "$RUNNER_TEMP/dynout/original.json" ]; then cp "$RUNNER_TEMP/dynout/original.json" "$RUNNER_TEMP/out/original.json"; fi
       - id: need
-        run: python -m review needs-rebuild --record out/original.json
+        run: PYTHONPATH="$RUNNER_TEMP/harness" python -m review needs-rebuild --record "$RUNNER_TEMP/out/original.json"
       - id: profile
         if: steps.need.outputs.rebuild == 'true'
         run: |
+          export PYTHONPATH="$RUNNER_TEMP/harness"
           {
             echo "setup=$(python -m review profile "$REPO" --field build.setup)"
             echo "java=$(python -m review profile "$REPO" --field build.java)"
             echo "submodules=$(python -m review profile "$REPO" --field build.submodules)"
           } >> "$GITHUB_OUTPUT"
-      - name: Source at the commit
+      - name: Source at the commit, at the workspace root
         if: steps.need.outputs.rebuild == 'true'
         id: src
         continue-on-error: true
@@ -240,7 +252,6 @@ jobs:
         with:
           repository: ${{ env.REPO }}
           ref: ${{ needs.static.outputs.commit }}
-          path: src
           submodules: ${{ steps.profile.outputs.submodules || 'false' }}
           token: ${{ github.token }}
           persist-credentials: false
@@ -250,7 +261,7 @@ jobs:
       # whose own steps set up its toolchain.
       - name: Repo's own Android setup
         if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'repo-android-setup'
-        uses: ./src/.github/actions/android-setup
+        uses: ./.github/actions/android-setup
       - name: Java and Android SDK
         if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'java-android'
         uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
@@ -260,24 +271,29 @@ jobs:
         run: rustup show && rustup default stable
       - name: act, for replaying the repo's own build job
         if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'act'
-        run: bash harness/scripts/install-tools.sh --act-only "$RUNNER_TEMP/review-bin"
+        run: bash "$RUNNER_TEMP/harness/scripts/install-tools.sh" --act-only "$RUNNER_TEMP/review-bin"
       - name: Build (no secrets)
         id: build
         if: steps.need.outputs.rebuild == 'true'
         # scripts/rebuild.py runs the build with every credential-shaped
         # variable removed, so a rebuild is unsigned by construction (README,
         # "Rebuilds"), and names the outputs as the release published them.
-        run: python harness/scripts/rebuild.py "$REPO" src out/original.json rebuilt
+        run: |
+          if [ "${{ steps.src.outcome }}" != success ]; then
+            echo "error=the source at ${{ needs.static.outputs.commit }} could not be checked out" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          PYTHONPATH="$RUNNER_TEMP/harness" python "$RUNNER_TEMP/harness/scripts/rebuild.py" "$REPO" . \
+            "$RUNNER_TEMP/out/original.json" "$RUNNER_TEMP/rebuilt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.need.outputs.rebuild == 'true' && steps.build.outputs.error == ''
         with:
           name: rebuilt-${{ needs.static.outputs.key }}
-          path: rebuilt
+          path: ${{ runner.temp }}/rebuilt
           retention-days: 90
 
   review-rebuild:
     needs: [static, rebuild]
-    if: always() && needs.rebuild.outputs.ran == 'true' && needs.rebuild.outputs.error == ''
+    if: always() && needs.rebuild.result == 'success' && needs.rebuild.outputs.ran == 'true' && needs.rebuild.outputs.error == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
@@ -361,12 +377,20 @@ jobs:
           args=(--original "$orig" --out out/decision.json --markdown out/report.md --run-url "${{ steps.url.outputs.url }}" --report-url "${{ steps.url.outputs.url }}")
           [ -f "$reb" ] && args+=(--rebuild "$reb")
           if [ ! -f "$reb" ] && [ -z "$REBUILD_ERROR" ]; then
-            [ "$REBUILD_RESULT" = failure ] && REBUILD_ERROR="the rebuild job failed"
-            [ "$REREVIEW_RESULT" = failure ] && REBUILD_ERROR="the rebuild's review failed"
+            # The earliest failure is the reason: a failed rebuild job means no
+            # rebuild exists, whatever happened after it.
+            if [ "$REBUILD_RESULT" = failure ]; then
+              REBUILD_ERROR="the rebuild job failed (its toolchain setup or build; log in the run)"
+            elif [ "$REREVIEW_RESULT" = failure ]; then
+              REBUILD_ERROR="the rebuild's review failed"
+            fi
           fi
           [ -n "$REBUILD_ERROR" ] && args+=(--rebuild-error "$REBUILD_ERROR")
           python -m review decide "${args[@]}"
           cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+          # And into the log, which can be read where the summary and the
+          # artifacts can't (pilot run 41981798479).
+          cat out/report.md
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: review-decision-${{ needs.static.outputs.key }}
