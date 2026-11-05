@@ -111,7 +111,8 @@ jobs:
             DRY=true
           fi
           echo "dry=$DRY" >> "$GITHUB_OUTPUT"
-          python -m review batch-tick --inventory "${{ inputs.inventory }}" --results results $([ "$DRY" = true ] && echo --dry-run) \
+          dry=(); if [ "$DRY" = true ]; then dry=(--dry-run); fi
+          python -m review batch-tick --inventory "${{ inputs.inventory }}" --results results "${dry[@]}" \
             | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Results file
         env:

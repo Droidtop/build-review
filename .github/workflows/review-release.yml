@@ -135,7 +135,7 @@ jobs:
         run: |
           tag="${PREV:-$(gh release list -R "$REPO" --limit 1 --exclude-drafts --json tagName -q '.[0].tagName' || true)}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          [ -n "$tag" ] && gh release download "$tag" -R "$REPO" -D work/previous || true
+          if [ -n "$tag" ]; then gh release download "$tag" -R "$REPO" -D work/previous || true; fi
       - id: commit
         env:
           FETCHED: ${{ steps.fetch.outputs.commit }}
@@ -232,7 +232,7 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.dynamic.result == 'success'
         with: {name: "review-dynamic-${{ needs.static.outputs.key }}", path: dynout}
-      - run: '[ -f dynout/original.json ] && cp dynout/original.json out/original.json || true'
+      - run: if [ -f dynout/original.json ]; then cp dynout/original.json out/original.json; fi
       - id: need
         run: python -m review needs-rebuild --record out/original.json
       - id: profile
