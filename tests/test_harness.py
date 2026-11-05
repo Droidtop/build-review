@@ -443,3 +443,24 @@ def test_rebuild_names_outputs_and_repacks_a_core_payload(tmp_path, monkeypatch)
     out = tmp_path / "out" / "dev.x.v1.enginehost.tar.xz"
     with tarfile.open(out) as tf:
         assert tf.getnames() == ["classes.dex"]
+
+
+def test_rebuild_packs_a_plugin_build_tree(tmp_path):
+    import subprocess, sys as _sys
+    src = tmp_path / "src"
+    (src / "out" / "x-unsigned" / "lib" / "x86_64").mkdir(parents=True)
+    (src / "out" / "x-unsigned" / "manifest.json").write_text("{}")
+    (src / "out" / "x-unsigned" / "classes.jar").write_bytes(b"PK")
+    (src / "out" / "x-unsigned" / "lib" / "x86_64" / "liba.so").write_bytes(b"\x7fELF")
+    root = tmp_path / "profiles"
+    (root / "T").mkdir(parents=True)
+    (root / "T" / "p.yml").write_text(
+        "build:\n  command: 'true'\n  outputs: {\"out/*-unsigned\": \"{plugin-bundle}\"}\n  repack: tree\n")
+    rec = tmp_path / "original.json"
+    rec.write_text(json.dumps({"artefacts": [{"name": "t.p.droidplugin.tar.xz", "kind": "plugin-bundle"}]}))
+    script = Path(__file__).resolve().parent.parent / "scripts" / "rebuild.py"
+    r = subprocess.run([_sys.executable, str(script), "T/p", str(src), str(rec), str(tmp_path / "o")],
+                       capture_output=True, text=True, env=dict(os.environ, BUILD_REVIEW_PROFILES=str(root)))
+    assert "error=" not in r.stdout, r.stdout + r.stderr
+    with tarfile.open(tmp_path / "o" / "t.p.droidplugin.tar.xz") as tf:
+        assert sorted(tf.getnames()) == ["classes.jar", "lib/x86_64/liba.so", "manifest.json"]

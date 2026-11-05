@@ -1,0 +1,26 @@
+# What every droidtop plugin repo shares (droidtop docs/plugin-api.md;
+# Droidtop/droidtop-platforms .github/workflows/droidtop-plugin-bundle.yml).
+# A plugin's own profile `extends: _kinds/droidtop-plugin` and states its
+# purpose, its host-API permissions (with the manifest's own reasons) and
+# its native libraries.
+artefacts:
+  - {pattern: "*.droidplugin.tar.xz", kind: plugin-bundle}
+build:
+  # The plugin's own `bundle` job: droidtop-platforms' shared plugin
+  # workflow at the commit the plugin pins. Its build job uploads the
+  # unsigned build/ tree; its sign job then fails here, with no key, as it
+  # should.
+  setup: act
+  workflow: .github/workflows/build.yml
+  job: bundle
+  signs_after_build: true
+  outputs:
+    "*-unsigned": "{plugin-bundle}"
+  repack: tree
+permissions: []          # a plugin's Android permissions are droidtop's; its own are host-API permissions
+api:
+  native-load: "A native_bundle plugin's libraries load in its plugin process (plugin-api.md 5.3)"
+  reflection: "Kotlin internals"
+hosts: {}
+dynamic:
+  skip_reason: "A plugin runs inside droidtop's plugin host; installed alone there is nothing to run. Its behaviour is bounded by the host-API permissions it declares, which are reviewed."

@@ -1,0 +1,26 @@
+# droidtop's Syncthing plugin. DRAFT by the harness lane (2026-11-05), read from
+# plugin-build.15 (droidtop.syncthing.droidplugin.tar.xz) and the repo at 5a14871.
+# Host-API permissions carry the manifest's own reasons. The plugins lane
+# confirms it on Droidtop/tracker#550.
+repo: Droidtop/droidtop-plugin-syncthing
+extends: _kinds/droidtop-plugin
+purpose: >
+  Upstream Syncthing, unmodified, run by droidtop as a native_bundle plugin, so the person's
+  devices keep folders in step. It pairs through droidtop's own device pairing; its web UI is
+  off. It runs in an open process with only the net.sockets hole (README; plugin-api.md 5.3).
+plugin_permissions:
+  net.sockets: "Syncthing connects to your other devices and listens for them itself (manifest.template.json)"
+  vault.own: "Keeps this device's Syncthing key and folder passwords sealed (manifest.template.json)"
+  files.shared.write: "Syncs a folder you choose on this device in place: saves, ROMs, games (manifest.template.json)"
+  devices.paired: "Syncs with the computers and handhelds you paired with droidtop, with no pairing of its own (manifest.template.json)"
+native_libs:
+  libsyncthing.so: "Upstream Syncthing at syncthing.pin, built as a Go c-shared library (README, build.sh)"
+api:
+  native-network: "Syncthing connects to the other devices and listens for them (net.sockets)"
+  native-process: "Go's runtime"
+  native-memory: "Go's runtime"
+  native-loading: "Go's runtime"
+hosts:
+  "*.syncthing.net": "Syncthing's own discovery and relay servers (upstream defaults)"
+  syncthing.net: "Upstream Syncthing's own strings"
+  github.com: "The plugin's homepage in its manifest"

@@ -19,7 +19,8 @@ original's one artefact of that kind. The rebuilt files then sit at the
 paths the original's findings name, so the two reviews' fingerprints can be
 compared. `repack: payload` turns a core's unsigned.tar (payload/ and
 bundle-metadata.json) into the bundle's own layout (payload at the root; the
-manifest is made at signing).
+manifest is made at signing). `repack: tree` packs an uploaded folder as it
+stands (a droidtop plugin's unsigned build/: manifest.json and payload).
 
 On failure it prints `error=<reason>` and exits 0, so the decision records
 the release as not rebuildable instead of the job failing.
@@ -80,12 +81,18 @@ def run_act(src: Path, build: dict, env: dict) -> Path:
            "-P", "ubuntu-latest=-self-hosted", "-P", "ubuntu-24.04=-self-hosted", "-P", "ubuntu-22.04=-self-hosted",
            "--artifact-server-path", str(art), "--no-cache-server"]
     r = subprocess.run(cmd, cwd=src, env=env)
-    if r.returncode:
-        fail(f"the repo's own job {job} failed at that commit (exit {r.returncode}; log in the run)")
     unpacked = art / "unpacked"
     for z in art.rglob("*.zip"):
         with zipfile.ZipFile(z) as zf:
             zf.extractall(unpacked / z.parent.name)
+    if r.returncode:
+        # A job that builds and then signs in a later job of its own (the
+        # shared droidtop plugin workflow) fails at signing here, since no
+        # key reaches a rebuild. With `signs_after_build: true` the uploads
+        # made before that failure are the outputs.
+        if not (build.get("signs_after_build") and unpacked.exists()):
+            fail(f"the repo's own job {job} failed at that commit (exit {r.returncode}; log in the run)")
+        print(f"act exited {r.returncode} after the build's uploads (the signing step has no key here, as intended)")
     return unpacked
 
 
@@ -98,6 +105,17 @@ def repack_payload(tar_path: Path, dest: Path) -> None:
             ni = tarfile.TarInfo(ti.name[len("payload/"):])
             ni.size, ni.mode, ni.mtime = len(data), ti.mode, 0
             out.addfile(ni, io.BytesIO(data))
+
+
+def pack_tree(folder: Path, dest: Path) -> None:
+    """A plugin bundle's layout: the unsigned build/ tree as it stands."""
+    with tarfile.open(dest, "w:xz") as out:
+        for p in sorted(folder.rglob("*")):
+            if p.is_file():
+                ti = out.gettarinfo(str(p), arcname=str(p.relative_to(folder)))
+                ti.mtime, ti.uid, ti.gid, ti.uname, ti.gname = 0, 0, 0, "", ""
+                with open(p, "rb") as fh:
+                    out.addfile(ti, fh)
 
 
 def main() -> None:
@@ -129,7 +147,9 @@ def main() -> None:
             name = same[0] if len(same) == 1 else None
         for hit in hits[:1] if name else hits:
             target = out / (name or Path(hit).name)
-            if build.get("repack") == "payload" and tarfile.is_tarfile(hit):
+            if build.get("repack") == "tree" and Path(hit).is_dir():
+                pack_tree(Path(hit), target)
+            elif build.get("repack") == "payload" and tarfile.is_tarfile(hit):
                 repack_payload(Path(hit), target)
             else:
                 shutil.copy(hit, target)
