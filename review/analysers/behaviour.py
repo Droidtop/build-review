@@ -15,10 +15,22 @@ BAD_HOST_HINTS = ("pastebin.", "ngrok", "duckdns.", "no-ip.", "trycloudflare.com
                   "api.telegram.org", "webhook.site", "requestbin", "pipedream.net", ".onion", "pool.", "xmr", "stratum")
 
 
+def _real_host(host: str) -> bool:
+    """A placeholder in a URL template ("http://x", "default.url") is not
+    an endpoint: a host needs a dot and a letters-only TLD, or to be an IP."""
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    labels = host.split(".")
+    return len(labels) >= 2 and labels[-1].isalpha() and len(labels[-1]) >= 2 and labels[-1] not in ("url", "local", "invalid", "test")
+
+
 def endpoints(facts: dict, profile: Profile) -> list[Finding]:
     out = []
     for host, where in sorted(facts.get("hosts", {}).items()):
-        if profile.host_ok(host):
+        if profile.host_ok(host) or not _real_host(host):
             continue
         sev = "medium"
         if any(h in host for h in BAD_HOST_HINTS):

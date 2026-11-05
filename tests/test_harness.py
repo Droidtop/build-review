@@ -312,3 +312,9 @@ def test_capa_namespace_severity_longest_prefix():
     assert native.CAPA_SEVERITY[keys("anti-analysis")] == "low"
     assert native.CAPA_SEVERITY[keys("anti-analysis/anti-debugging/debugger-detection")] == "high"
     assert native.CAPA_SEVERITY[keys("host-interaction/process/inject")] == "critical"
+
+
+def test_placeholder_hosts_are_not_endpoints():
+    facts = {"hosts": {"x": "dex", "default.url": "dex", "1.2.2.1": "dex", "evil.example.net": "dex"}}
+    found = {f.location for f in behaviour.endpoints(facts, _profile())}
+    assert found == {"1.2.2.1", "evil.example.net"}
