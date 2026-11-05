@@ -10,7 +10,10 @@ purpose: >
 build:
   workflow: .github/workflows/plugin-bundle.yml   # the plugin's own bundle job lives here
   job: bundle
-plugin_permissions: {}
+plugin_permissions:
+  # From ci/root-through-provider-892 (07b08b5, Droidtop/tracker#892) on; earlier
+  # releases declare nothing and run su directly (https://github.com/Droidtop/tracker/issues/550#issuecomment-6651850434).
+  priv.shell.root: "Lists your modules, switches them on and off, and installs new ones (manifest, optional)"
 # Not stated here, on purpose: its dex runs `su -c` directly (RootShell.exec,
 # from ModuleManager and RootProvider) under a contract 3 manifest that
 # declares requestsRoot and no priv.shell.root. That bypasses droidtop's root
