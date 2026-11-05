@@ -220,6 +220,28 @@ def _walk_strings(o):
             yield from _walk_strings(v)
 
 
+URL_VALUE = __import__("re").compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
+
+
+def _catalog_entries(data: dict) -> list[dict]:
+    """Every downloadable entry, whatever the catalog's shape: lists of
+    entries (droidtop's plugin catalogs), or maps of lists and maps of
+    objects (droidtop-components: items {type: [..]}, files {name: {..}})."""
+    out: list[dict] = []
+    for key in ("entries", "plugins", "components", "items", "files"):
+        v = data.get(key)
+        if isinstance(v, list):
+            out += [e for e in v if isinstance(e, dict)]
+        elif isinstance(v, dict):
+            for k, e in v.items():
+                if isinstance(e, dict):
+                    out.append(dict(e, id=e.get("id") or f"{key}/{k}"))
+                elif isinstance(e, list):
+                    out += [dict(x, id=f"{k}/{x.get('id') or x.get('name') or i}") for i, x in enumerate(e)
+                            if isinstance(x, dict)]
+    return out
+
+
 def catalog(path: Path, profile: Profile, facts: dict) -> list[Finding]:
     out: list[Finding] = []
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -230,9 +252,7 @@ def catalog(path: Path, profile: Profile, facts: dict) -> list[Finding]:
         except Exception as e:  # noqa: BLE001
             return [Finding("catalog", "catalog.unparseable", "high", "The catalog is not valid JSON or JWS.",
                             location=path.name, evidence=str(e), category="nonsense")]
-    entries = data.get("entries") or data.get("plugins") or data.get("components") or data.get("items") or []
-    if isinstance(entries, dict):
-        entries = [dict(v, id=k) if isinstance(v, dict) else {"id": k} for k, v in entries.items()]
+    entries = _catalog_entries(data)
     facts["catalogEntries"] = len(entries)
     seen: dict[str, int] = {}
     index = {}
@@ -241,7 +261,9 @@ def catalog(path: Path, profile: Profile, facts: dict) -> list[Finding]:
             continue
         eid = str(e.get("id") or e.get("name") or i)
         seen[eid] = seen.get(eid, 0) + 1
-        urls = [v for v in _walk_strings(e) if "://" in v]
+        # Values that are URLs from end to end. A sentence that mentions one
+        # (a licence note's "https://.../LICENSE") is text, not a download.
+        urls = [v for v in _walk_strings(e) if URL_VALUE.fullmatch(v.strip())]
         index[eid] = {"urls": sorted(urls), "sha256": e.get("sha256"), "version": e.get("version")}
         for u in urls:
             pu = urlparse(u)

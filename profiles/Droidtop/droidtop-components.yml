@@ -1,0 +1,43 @@
+# droidtop-components' review profile. DRAFT by the harness lane (2026-11-05), read from
+# the repo at 2c8053f (README, sources/mirror.json, sources/feeds.json) and the `catalog`
+# release's catalog.json. The components lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/droidtop-components
+purpose: >
+  The Windows-runtime components droidtop downloads on demand (Wine and Proton builds, DXVK,
+  VKD3D-Proton, FEXCore, Box64, Adreno drivers, the runtime's base system, innoextract), re-hosted
+  unmodified from their makers or built here unchanged from upstream source, and the catalog
+  droidtop reads (every file with its SHA-256 and its urls). README.
+artefacts:
+  - {pattern: "catalog.json", kind: catalog}
+  - {pattern: "innoextract-*", kind: elf}          # built here from source (tools/innoextract)
+  - {pattern: "*.wcp", kind: archive}
+  - {pattern: "*.tzst", kind: archive}
+  - {pattern: "*.txz", kind: archive}
+  - {pattern: "*.tar.*", kind: archive}
+build:
+  # A re-hosted file's rebuild is its maker's own copy, checked against the
+  # SHA-256 the mirror's record gives at that commit (scripts/rebuild.py).
+  setup: mirror
+  mirror: sources/mirror.json
+  outputs:
+    "*": null
+hosts:
+  github.com: "The mirror's own releases and linked GitHub release feeds (sources/feeds.json)"
+  raw.githubusercontent.com: "Linked feeds' files"
+  downloads.gamenative.app: "Where the mirrored GameNative builds came from (sources/mirror.json `from`)"
+# Every component is native code by nature: Wine, drivers, Box64 and the
+# rest are what the runtime runs. Native files are expected throughout.
+native_libs:
+  "*": "Components are native code by purpose (Wine, drivers, Box64, FEXCore); each is reviewed, none is expected to be listed one by one"
+api:
+  native-process: "Wine, Box64 and the runtime's tools start processes"
+  native-network: "Wine's networking"
+  native-loading: "Wine and the drivers load libraries"
+  native-memory: "Box64 and FEXCore are JITs"
+  native-anti-analysis: "JITs and Wine issue raw system calls"
+  native-keylogging: "Wine's DirectInput implementation installs a keyboard hook (dinput.dll and dinput8.dll import SetWindowsHookExW, seen in windows-runtime's arm64ec_input_dlls.tzst)"
+# Left to the components lane: capa's "check if process is running under
+# wine" on Wine's own xinput DLLs. Wine's DLLs checking for Wine is expected,
+# but only the owning lane marks a finding explained, with a source.
+dynamic:
+  skip_reason: "Components run inside droidtop's Windows runtime, not as an app; there is nothing to install alone."

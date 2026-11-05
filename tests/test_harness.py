@@ -486,3 +486,35 @@ def test_endpoints_need_a_public_suffix():
 def test_inner_apk_manifest_findings_do_not_block():
     from review.static import INERT_IN_BUNDLE
     assert "permission." in INERT_IN_BUNDLE and "component." in INERT_IN_BUNDLE
+
+
+def test_catalog_maps_of_lists_and_objects(tmp_path):
+    cat = tmp_path / "catalog.json"
+    cat.write_text(json.dumps({"items": {"box64": [{"id": "1", "url": "https://github.com/a", "sha256": "1" * 64},
+                                                   {"id": "2", "url": "http://evil.example.net/b"}]},
+                               "files": {"base.txz": {"url": "https://github.com/c", "sha256": "2" * 64}}}))
+    facts = {}
+    rules = {(f.rule, f.location.split(":")[0]) for f in manifests.catalog(cat, _profile(), facts)}
+    assert facts["catalogEntries"] == 3
+    assert ("catalog.not-https", "box64/2") in rules and ("catalog.no-hash", "box64/2") in rules
+
+
+def test_catalog_text_mentioning_a_url_is_not_a_download(tmp_path):
+    cat = tmp_path / "catalog.json"
+    cat.write_text(json.dumps({"files": {"a.tzst": {"url": "https://github.com/a", "sha256": "1" * 64,
+                                                    "licence": "MIT (see https://example.org/LICENSE)"}}}))
+    assert manifests.catalog(cat, _profile(), {}) == []
+
+
+@pytest.mark.skipif(not shutil.which("zstd"), reason="zstd not installed")
+def test_zstd_component_archives_unpack(tmp_path):
+    import subprocess
+    (tmp_path / "in").mkdir()
+    (tmp_path / "in" / "a.txt").write_text("x")
+    with tarfile.open(tmp_path / "c.tar", "w") as tf:
+        tf.add(tmp_path / "in" / "a.txt", arcname="a.txt")
+    subprocess.run(["zstd", "-q", str(tmp_path / "c.tar"), "-o", str(tmp_path / "c.tzst")], check=True)
+    from review.extract import kind_of
+    assert kind_of(tmp_path / "c.tzst") == "archive"
+    assert extract(tmp_path / "c.tzst", tmp_path / "out") == []
+    assert (tmp_path / "out" / "a.txt").read_text() == "x"

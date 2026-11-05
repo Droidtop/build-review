@@ -51,7 +51,7 @@ if command -v apt-get >/dev/null && [ "${INSTALL_APT:-1}" = 1 ]; then
   # A runner's package index can be older than the mirror (pilot run
   # 41968340207: a 404 on libprotobuf), so refresh it first.
   sudo DEBIAN_FRONTEND=noninteractive apt-get update -q >/dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q yara tshark aapt >/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q yara tshark aapt zstd >/dev/null
 fi
 python3 -m pip install -q -r "$(dirname "$0")/../requirements.txt"
 # Enginehost's own bundle conformance check and engine names, at a pinned

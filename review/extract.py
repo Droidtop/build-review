@@ -44,6 +44,8 @@ def kind_of(path: str | Path) -> str:
         return "catalog"
     if head == b"\x7fELF":
         return "elf"
+    if head == b"\x28\xb5\x2f\xfd":
+        return "archive"   # zstd: a .tzst or .wcp component
     if head[:2] == b"PK" or p.endswith((".tar.xz", ".tar.gz", ".tgz", ".tar.zst", ".zip", ".tar")):
         # Enginehost core bundles ship as zips or tarballs beside
         # enginehost-public-key.json; the caller can say so explicitly.
@@ -58,9 +60,31 @@ def _safe_name(name: str) -> str | None:
     return str(pp)
 
 
+def _unzstd(src: Path) -> Path | None:
+    """A zstd-compressed tar (.tzst, droidtop-components' .wcp), through the
+    zstd tool, since Python's tarfile can't read zstd before 3.14."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    with open(src, "rb") as fh:
+        if fh.read(4) != b"\x28\xb5\x2f\xfd" or not shutil.which("zstd"):
+            return None
+    out = Path(tempfile.mkdtemp(prefix="unzstd-")) / (src.name + ".tar")
+    r = subprocess.run(["zstd", "-q", "-d", "--no-progress", "-o", str(out), str(src)], capture_output=True)
+    return out if r.returncode == 0 else None
+
+
 def extract(src: str | Path, dest: str | Path, nested: bool = True, _depth: int = 0) -> list[Finding]:
     """Extract src into dest. Returns findings about the archive itself."""
     src, dest = Path(src), Path(dest)
+    plain = _unzstd(src)
+    if plain is not None:
+        import shutil
+        try:
+            return extract(plain, dest, nested, _depth)
+        finally:
+            shutil.rmtree(plain.parent, ignore_errors=True)
     dest.mkdir(parents=True, exist_ok=True)
     findings: list[Finding] = []
     total = 0

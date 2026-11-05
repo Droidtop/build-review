@@ -117,6 +117,50 @@ def repack_payload(tar_path: Path, dest: Path) -> None:
             out.addfile(ni, io.BytesIO(data))
 
 
+def run_mirror(src: Path, build: dict) -> Path:
+    """A re-hosted file's rebuild is its maker's own copy: the mirror's
+    record at that commit (droidtop-components sources/mirror.json: `from`,
+    `official`, `sha256`) says where the maker publishes it and what it must
+    hash to. The maker's bytes, checked against that hash, are the rebuild."""
+    import hashlib
+    import urllib.request
+
+    record = src / build.get("mirror", "sources/mirror.json")
+    if not record.is_file():
+        fail(f"{record.relative_to(src)} is not in the source at that commit")
+    files = json.loads(record.read_text()).get("files", [])
+    by_name = {}
+    for f in files:
+        for key in (f.get("name"), Path(f.get("path") or "").name):
+            if key:
+                by_name[key] = f
+    root = Path(tempfile.mkdtemp(prefix="mirror-"))
+    missing = []
+    for a in ORIGINALS:
+        f = by_name.get(a["name"])
+        if not f:
+            missing.append(a["name"])
+            continue
+        for url in [f.get("from"), *(f.get("official") or [])]:
+            if not url:
+                continue
+            try:
+                data = urllib.request.urlopen(url, timeout=600).read()
+            except Exception as e:  # noqa: BLE001
+                print(f"{url}: {e}")
+                continue
+            if hashlib.sha256(data).hexdigest() == str(f.get("sha256", "")).lower():
+                (root / a["name"]).write_bytes(data)
+                print(f"{a['name']}: the maker's copy at {url} matches the mirror's record")
+                break
+            print(f"{url}: does not match the mirror's recorded SHA-256")
+        else:
+            fail(f"no maker's copy of {a['name']} matches the mirror's record")
+    if missing:
+        fail("not re-hosted files, so there is no maker's copy to compare: " + ", ".join(missing[:5]))
+    return root
+
+
 def pack_tree(folder: Path, dest: Path) -> None:
     """A plugin bundle's layout: the unsigned build/ tree as it stands."""
     with tarfile.open(dest, "w:xz") as out:
@@ -136,7 +180,9 @@ def main() -> None:
         fail("the source at that commit could not be checked out")
     env = clean_env()
     ORIGINALS[:] = json.loads(record.read_text()).get("artefacts", [])
-    if build.get("setup") == "act":
+    if build.get("setup") == "mirror":
+        root = run_mirror(src, build)
+    elif build.get("setup") == "act":
         root = run_act(src, build, env)
     elif build.get("command"):
         root = run_command(src, build["command"], env)
