@@ -1,0 +1,408 @@
+name: Build review
+
+# The standard build review loop (Droidtop/tracker#550), as one reusable
+# workflow any repo's release can call:
+#   1. review the built artefacts (static always; dynamic where it applies)
+#   2. findings: rebuild from the same commit and review the rebuild
+#   3. decide: approved | rebuilt | refused (with a reason)
+#   4. a finding in the code files a tracker issue with the evidence
+#
+# It never signs, revokes or reads a signing secret. Callers pass only
+# BUILD_REVIEW_TOKEN, never `secrets: inherit`. The rebuild runs with no
+# secrets at all.
+#
+# Two ways in:
+#   source: artifact  the standing gate. A build job in the same run uploads
+#                     the unsigned artefacts as `artifact-name`; the sign job
+#                     `needs:` this one and runs only if `sign` is true, and
+#                     signs `sign-artifact` (the original or the rebuild).
+#   source: release   the audit. Reviews release `release` of `repo` as
+#                     published (the batch runner, batch.yml).
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: owner/repo under review. Default is the caller.
+        type: string
+        default: ""
+      release:
+        description: Release tag (audit) or a build label (gate), e.g. v1.2.0 or build-131.
+        type: string
+        required: true
+      commit:
+        description: Commit the build claims. Default is the tag's commit (audit) or the caller's sha (gate).
+        type: string
+        default: ""
+      source:
+        description: artifact | release
+        type: string
+        default: artifact
+      artifact-name:
+        description: (gate) The artifact the build job uploaded, unsigned.
+        type: string
+        default: ""
+      previous-release:
+        description: (gate) Earlier release to diff against. Default is the newest published one.
+        type: string
+        default: ""
+      mode:
+        description: gate (fail unless signable) | audit (record the outcome and carry on)
+        type: string
+        default: gate
+      file-issues:
+        type: boolean
+        default: true
+      tracker:
+        type: string
+        default: Droidtop/tracker
+      harness-ref:
+        description: Ref of Droidtop/build-review to run (the same one the caller's `uses:` names).
+        type: string
+        default: v1
+    secrets:
+      BUILD_REVIEW_TOKEN:
+        description: Read on the repos under review, issues write on the tracker. Never a signing secret.
+        required: false
+    outputs:
+      outcome:
+        value: ${{ jobs.decide.outputs.outcome }}
+      reason:
+        value: ${{ jobs.decide.outputs.reason }}
+      sign:
+        description: true when the build may be signed.
+        value: ${{ jobs.decide.outputs.sign }}
+      sign-artifact:
+        description: The artifact to sign (the original, or the clean rebuild).
+        value: ${{ jobs.decide.outputs.sign-artifact }}
+      report-url:
+        value: ${{ jobs.decide.outputs.report-url }}
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  REPO: ${{ inputs.repo || github.repository }}
+  ID: ${{ inputs.repo && format('{0}-{1}', inputs.repo, inputs.release) || format('{0}-{1}', github.repository, inputs.release) }}
+  PYTHONPATH: ${{ github.workspace }}/harness
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+      needs_dynamic: ${{ steps.review.outputs.needs_dynamic }}
+      apks: ${{ steps.review.outputs.apks }}
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - id: key
+        run: echo "key=$(echo "$ID" | tr '/@' '--' | tr -cd 'A-Za-z0-9._-')" >> "$GITHUB_OUTPUT"
+      - name: Harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Droidtop/build-review
+          ref: ${{ inputs.harness-ref }}
+          path: harness
+          persist-credentials: false
+      - uses: ./harness/.github/actions/setup
+
+      - name: Artefacts (gate)
+        if: inputs.source == 'artifact'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: work/artefacts
+      - name: Artefacts (audit)
+        if: inputs.source == 'release'
+        id: fetch
+        env:
+          BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
+        run: python -m review fetch --repo "$REPO" --tag "${{ inputs.release }}" --out work/artefacts --previous-out work/previous
+      - name: Previous release (gate)
+        if: inputs.source == 'artifact'
+        id: prev
+        env:
+          GH_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
+          PREV: ${{ inputs.previous-release }}
+        run: |
+          tag="${PREV:-$(gh release list -R "$REPO" --limit 1 --exclude-drafts --json tagName -q '.[0].tagName' || true)}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          [ -n "$tag" ] && gh release download "$tag" -R "$REPO" -D work/previous || true
+      - id: commit
+        env:
+          FETCHED: ${{ steps.fetch.outputs.commit }}
+          GIVEN: ${{ inputs.commit }}
+        run: |
+          c="${GIVEN:-$FETCHED}"
+          echo "commit=${c:-$GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Source at the commit (for its lockfiles)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        continue-on-error: true
+        with:
+          repository: ${{ env.REPO }}
+          ref: ${{ steps.commit.outputs.commit }}
+          path: work/source
+          token: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Review the previous release (for the diff)
+        run: |
+          if [ -d work/previous ] && [ -n "$(ls -A work/previous 2>/dev/null)" ]; then
+            python -m review review --repo "$REPO" --release "previous" --out work/previous.json work/previous || true
+          fi
+      - name: Review
+        id: review
+        run: |
+          src=(); [ -d work/source ] && src=(--source work/source)
+          prev=(); [ -f work/previous.json ] && prev=(--previous work/previous.json)
+          python -m review review --repo "$REPO" --release "${{ inputs.release }}" \
+            --commit "${{ steps.commit.outputs.commit }}" "${src[@]}" "${prev[@]}" \
+            --out "out/original.json" work/artefacts
+      - name: Keep the APKs for the dynamic run
+        if: steps.review.outputs.needs_dynamic == 'true'
+        run: mkdir -p out/apks && find work/artefacts -name '*.apk' -exec cp {} out/apks/ \;
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-static-${{ steps.key.outputs.key }}
+          path: out
+          retention-days: 90
+
+  dynamic:
+    needs: static
+    if: needs.static.outputs.needs_dynamic == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {repository: Droidtop/build-review, ref: "${{ inputs.harness-ref }}", path: harness, persist-credentials: false}
+      - uses: ./harness/.github/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: {name: "review-static-${{ needs.static.outputs.key }}", path: out}
+      - id: list
+        run: echo "apks=$(find out/apks -name '*.apk' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+      - name: Sandbox run
+        if: steps.list.outputs.apks != ''
+        uses: ./harness/.github/actions/dynamic
+        with:
+          apks: ${{ steps.list.outputs.apks }}
+          out: ${{ github.workspace }}/dyn
+          events: ${{ vars.BUILD_REVIEW_MONKEY_EVENTS || '600' }}
+      - name: Judge
+        run: |
+          shopt -s nullglob
+          traces=(dyn/*/)
+          if [ ${#traces[@]} -eq 0 ]; then mkdir -p dyn/none; traces=(dyn/none/); fi
+          for t in "${traces[@]}"; do python -m review judge-dynamic --record out/original.json --trace "$t"; done
+          cp out/original.json dyn/original.json
+          find dyn -name net.pcap -delete
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-dynamic-${{ needs.static.outputs.key }}
+          path: dyn
+          retention-days: 90
+
+  rebuild:
+    needs: [static, dynamic]
+    if: always() && needs.static.result == 'success' && needs.dynamic.result != 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    # The repo's own build (and its own setup action) runs here: the job
+    # holds no secret, and its token can only read.
+    permissions:
+      contents: read
+    outputs:
+      ran: ${{ steps.need.outputs.rebuild }}
+      error: ${{ steps.build.outputs.error }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {repository: Droidtop/build-review, ref: "${{ inputs.harness-ref }}", path: harness, persist-credentials: false}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: {python-version: "3.12"}
+      - run: python -m pip install -q pyyaml==6.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: {name: "review-static-${{ needs.static.outputs.key }}", path: out}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.dynamic.result == 'success'
+        with: {name: "review-dynamic-${{ needs.static.outputs.key }}", path: dynout}
+      - run: '[ -f dynout/original.json ] && cp dynout/original.json out/original.json || true'
+      - id: need
+        run: python -m review needs-rebuild --record out/original.json
+      - id: profile
+        if: steps.need.outputs.rebuild == 'true'
+        run: |
+          {
+            echo "setup=$(python -m review profile "$REPO" --field build.setup)"
+            echo "java=$(python -m review profile "$REPO" --field build.java)"
+            echo "submodules=$(python -m review profile "$REPO" --field build.submodules)"
+            echo "outputs=$(python -m review profile "$REPO" --field build.outputs)"
+          } >> "$GITHUB_OUTPUT"
+          python -m review profile "$REPO" --field build.command > "$RUNNER_TEMP/build-command"
+      - name: Source at the commit
+        if: steps.need.outputs.rebuild == 'true'
+        id: src
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.REPO }}
+          ref: ${{ needs.static.outputs.commit }}
+          path: src
+          submodules: ${{ steps.profile.outputs.submodules || 'false' }}
+          token: ${{ secrets.BUILD_REVIEW_TOKEN || github.token }}
+          persist-credentials: false
+      # Toolchains. The repo's own setup action is the one its build used at
+      # that commit, so an old release is rebuilt with its own toolchain.
+      - name: Repo's own Android setup
+        if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'repo-android-setup'
+        uses: ./src/.github/actions/android-setup
+      - name: Java and Android SDK
+        if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'java-android'
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with: {distribution: temurin, java-version: "${{ steps.profile.outputs.java || '17' }}"}
+      - name: Rust
+        if: steps.need.outputs.rebuild == 'true' && steps.src.outcome == 'success' && steps.profile.outputs.setup == 'rust'
+        run: rustup show && rustup default stable
+      - name: Build (no secrets)
+        id: build
+        if: steps.need.outputs.rebuild == 'true'
+        working-directory: src
+        # The env is emptied of anything signing-shaped on purpose: a rebuild
+        # is unsigned by construction (README, "Rebuilds").
+        env:
+          SIGNING_KEYSTORE_PATH: ""
+          SIGNING_STORE_PASSWORD: ""
+          SIGNING_KEY_ALIAS: ""
+          SIGNING_KEY_PASSWORD: ""
+          OUTPUTS: ${{ steps.profile.outputs.outputs }}
+        run: |
+          if [ "${{ steps.src.outcome }}" != success ]; then
+            echo "error=the source at ${{ needs.static.outputs.commit }} could not be checked out" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ ! -s "$RUNNER_TEMP/build-command" ]; then
+            echo "error=the repo's profile gives no build command" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if ! bash -e "$RUNNER_TEMP/build-command" > "$RUNNER_TEMP/build.log" 2>&1; then
+            tail -50 "$RUNNER_TEMP/build.log"
+            echo "error=the build failed at that commit (log in the run)" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          mkdir -p ../rebuilt
+          python3 -c 'import glob, json, os, shutil, sys
+          n = 0
+          for g in json.loads(os.environ["OUTPUTS"] or "[]"):
+              for p in glob.glob(g, recursive=True):
+                  shutil.copy(p, "../rebuilt/"); n += 1
+          sys.exit(0 if n else 1)' || echo "error=the build made none of the profile's outputs" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.need.outputs.rebuild == 'true' && steps.build.outputs.error == ''
+        with:
+          name: rebuilt-${{ needs.static.outputs.key }}
+          path: rebuilt
+          retention-days: 90
+
+  review-rebuild:
+    needs: [static, rebuild]
+    if: always() && needs.rebuild.outputs.ran == 'true' && needs.rebuild.outputs.error == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {repository: Droidtop/build-review, ref: "${{ inputs.harness-ref }}", path: harness, persist-credentials: false}
+      - uses: ./harness/.github/actions/setup
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: {name: "rebuilt-${{ needs.static.outputs.key }}", path: rebuilt}
+      - name: Review the rebuild, the same way
+        id: review
+        run: |
+          python -m review review --repo "$REPO" --release "${{ inputs.release }}" --stage rebuild \
+            --commit "${{ needs.static.outputs.commit }}" --out out/rebuild.json rebuilt
+      - name: Sandbox run (rebuild)
+        if: steps.review.outputs.needs_dynamic == 'true' && steps.review.outputs.apks != ''
+        uses: ./harness/.github/actions/dynamic
+        with:
+          apks: ${{ steps.review.outputs.apks }}
+          out: ${{ github.workspace }}/dyn
+      - name: Judge (rebuild)
+        if: steps.review.outputs.needs_dynamic == 'true'
+        run: |
+          shopt -s nullglob
+          for t in dyn/*/; do python -m review judge-dynamic --record out/rebuild.json --trace "$t"; done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-rebuild-${{ needs.static.outputs.key }}
+          path: out
+          retention-days: 90
+
+  decide:
+    needs: [static, dynamic, rebuild, review-rebuild]
+    if: always() && needs.static.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      outcome: ${{ steps.decide.outputs.outcome }}
+      reason: ${{ steps.decide.outputs.reason }}
+      sign: ${{ steps.decide.outputs.outcome == 'approved' || steps.decide.outputs.outcome == 'rebuilt' }}
+      sign-artifact: ${{ steps.decide.outputs.outcome == 'rebuilt' && format('rebuilt-{0}', needs.static.outputs.key) || inputs.artifact-name }}
+      report-url: ${{ steps.url.outputs.url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {repository: Droidtop/build-review, ref: "${{ inputs.harness-ref }}", path: harness, persist-credentials: false}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: {python-version: "3.12"}
+      - run: python -m pip install -q pyyaml==6.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: {pattern: "review-*-${{ needs.static.outputs.key }}", path: got}
+      - id: url
+        run: echo "url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+      - name: Decide
+        id: decide
+        env:
+          REBUILD_ERROR: ${{ needs.rebuild.outputs.error }}
+          REBUILD_RESULT: ${{ needs.rebuild.result }}
+          REREVIEW_RESULT: ${{ needs.review-rebuild.result }}
+        run: |
+          orig=got/review-static-${{ needs.static.outputs.key }}/original.json
+          [ -f got/review-dynamic-${{ needs.static.outputs.key }}/original.json ] && orig=got/review-dynamic-${{ needs.static.outputs.key }}/original.json
+          if [ "${{ needs.static.outputs.needs_dynamic }}" = true ] && [ "${{ needs.dynamic.result }}" != success ]; then
+            # The dynamic run was needed and didn't finish: the review is incomplete.
+            python - "$orig" <<'PY'
+          import json, sys
+          p = sys.argv[1]; r = json.load(open(p))
+          r["findings"].append({"analyser": "dynamic", "rule": "harness.dynamic-missing", "severity": "critical",
+              "title": "The dynamic run was needed and did not finish, so behaviour was not reviewed.",
+              "location": "", "evidence": "", "category": "harness", "fingerprint": "dynamic-missing", "blocking": True})
+          r["clean"] = False; r["unreviewable"] = True
+          json.dump(r, open(p, "w"), indent=2)
+          PY
+          fi
+          reb=got/review-rebuild-${{ needs.static.outputs.key }}/rebuild.json
+          args=(--original "$orig" --out out/decision.json --markdown out/report.md --run-url "${{ steps.url.outputs.url }}" --report-url "${{ steps.url.outputs.url }}")
+          [ -f "$reb" ] && args+=(--rebuild "$reb")
+          if [ ! -f "$reb" ] && [ -z "$REBUILD_ERROR" ]; then
+            [ "$REBUILD_RESULT" = failure ] && REBUILD_ERROR="the rebuild job failed"
+            [ "$REREVIEW_RESULT" = failure ] && REBUILD_ERROR="the rebuild's review failed"
+          fi
+          [ -n "$REBUILD_ERROR" ] && args+=(--rebuild-error "$REBUILD_ERROR")
+          python -m review decide "${args[@]}"
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: File the issue (the code is the problem)
+        if: steps.decide.outputs.needs_issue == 'true' && inputs.file-issues
+        env:
+          BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}
+        run: |
+          if [ -z "$BUILD_REVIEW_TOKEN" ]; then echo "::warning::no BUILD_REVIEW_TOKEN: issue not filed"; exit 0; fi
+          python -m review file-issue --decision out/decision.json --tracker "${{ inputs.tracker }}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-decision-${{ needs.static.outputs.key }}
+          path: out
+          retention-days: 400
+      - name: Gate
+        if: inputs.mode == 'gate'
+        run: |
+          case "${{ steps.decide.outputs.outcome }}" in
+            approved|rebuilt) echo "signable: ${{ steps.decide.outputs.outcome }}";;
+            *) echo "::error::build review refused this build (${{ steps.decide.outputs.reason }}); see the summary"; exit 1;;
+          esac

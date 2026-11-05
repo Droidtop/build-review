@@ -1,0 +1,14 @@
+name: Build review tools
+description: Python and every pinned analyser (scripts/install-tools.sh).
+inputs:
+  harness-path:
+    description: Where the harness is checked out.
+    default: harness
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.12"
+    - shell: bash
+      run: bash "${{ inputs.harness-path }}/scripts/install-tools.sh" "$RUNNER_TEMP/review-bin"

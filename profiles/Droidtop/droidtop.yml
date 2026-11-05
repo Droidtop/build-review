@@ -1,0 +1,131 @@
+# droidtop: the pilot profile. Draft, derived from main's manifests and
+# sources at 8b447d7 (2026-11-04); the droidtop lane confirms each line
+# against docs/SPEC.md before the pilot's results count.
+repo: Droidtop/droidtop
+purpose: >
+  An Android frontend for handhelds: a gaming shell, a standard launcher and
+  a desktop mode over one library of games from many stores and sources. It
+  installs and launches emulators and apps, hosts plugins (dex loaded in an
+  isolated process), runs Linux containers without root, and streams games
+  through windowcast.
+artefacts:
+  - {pattern: "droidtop-debug*.apk", kind: apk, debug: true}   # the in-app "Install debug builds" variant
+  - {pattern: "droidtop*.apk", kind: apk}
+  - {pattern: "*.droidplugin.tar.xz", kind: plugin-bundle}
+build:
+  setup: repo-android-setup     # .github/actions/android-setup (android-build.yml:91)
+  submodules: recursive         # android-build.yml:72
+  # No secrets: app/build.gradle.kts:98-145 signs with the debug key when
+  # SIGNING_KEYSTORE_PATH is unset, so a rebuild needs no signing material.
+  command: ./gradlew :app:assembleRelease --stacktrace
+  outputs: ["app/build/outputs/apk/release/*.apk"]
+permissions:
+  - android.permission.INTERNET                     # stores, metadata, downloads
+  - android.permission.ACCESS_NETWORK_STATE
+  - android.permission.ACCESS_WIFI_STATE
+  - android.permission.CHANGE_WIFI_MULTICAST_STATE  # finding paired computers on the LAN
+  - android.permission.ACCESS_COARSE_LOCATION       # Wi-Fi SSID for LAN pairing (Android requires it)
+  - android.permission.ACCESS_FINE_LOCATION         # same
+  - android.permission.BLUETOOTH                    # controllers
+  - android.permission.BLUETOOTH_CONNECT
+  - android.permission.FOREGROUND_SERVICE           # downloads, plugin services
+  - android.permission.FOREGROUND_SERVICE_SPECIAL_USE
+  - android.permission.FOREGROUND_SERVICE_DATA_SYNC
+  - android.permission.POST_NOTIFICATIONS
+  - android.permission.MANAGE_EXTERNAL_STORAGE      # reading game folders in place (never copying them)
+  - android.permission.READ_EXTERNAL_STORAGE
+  - android.permission.WRITE_EXTERNAL_STORAGE
+  - android.permission.QUERY_ALL_PACKAGES           # the launcher lists every app
+  - android.permission.PACKAGE_USAGE_STATS          # recents in the launcher
+  - android.permission.REQUEST_INSTALL_PACKAGES     # installing emulators and its own updates
+  - android.permission.REQUEST_DELETE_PACKAGES
+  - android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION
+  - android.permission.SYSTEM_ALERT_WINDOW          # the Quick Menu over games
+  - android.permission.WRITE_SETTINGS               # brightness and rotation from the Quick Menu
+  - android.permission.ACCESS_NOTIFICATION_POLICY   # do-not-disturb while playing
+  - android.permission.RECORD_AUDIO                 # windowcast voice and mic passthrough
+  - android.permission.CAMERA                       # QR pairing
+  - android.permission.REORDER_TASKS
+  - android.permission.KILL_BACKGROUND_PROCESSES
+  - android.permission.RECEIVE_BOOT_COMPLETED
+  - android.permission.WAKE_LOCK
+  - android.permission.VIBRATE
+  - android.permission.MODIFY_AUDIO_SETTINGS
+  - android.permission.EXPAND_STATUS_BAR
+  - android.permission.SET_WALLPAPER
+  - android.permission.SET_WALLPAPER_HINTS
+  - android.permission.BIND_APPWIDGET               # launcher widgets
+  - android.permission.ACCESS_HIDDEN_PROFILES
+  - android.permission.READ_USER_DICTIONARY         # input-keyboard
+  - android.permission.WRITE_USER_DICTIONARY
+  - android.permission.READ_DEVICE_CONFIG
+  - android.permission.LOCK_APPS
+  - android.permission.ROTATE_SURFACE_FLINGER       # dual-display handling
+  - android.permission.WAKEUP_SURFACE_FLINGER
+  - com.droidtop.permission.READ_SETTINGS
+  - com.droidtop.permission.WRITE_SETTINGS
+  - moe.shizuku.manager.permission.API_V23          # Shizuku, non-root
+api:
+  - exec               # the noroot Linux runtime starts proot and its processes
+  - dynamic-code       # plugin host loads plugin dex in :pluginhost
+  - native-load
+  - reflection
+  - package-install    # emulator and self updates
+  - clipboard-read     # paste into the keyboard and the desktop
+  - location           # Wi-Fi SSID for pairing
+  - audio-record       # windowcast mic passthrough
+  - camera             # QR pairing
+  - native-process
+  - native-network
+  - native-loading
+  - native-memory
+  - native-injection   # libproot (the noroot Linux runtime) reads and writes its tracee's memory: process_vm_readv/writev
+hosts:
+  - github.com
+  - "*.github.com"
+  - "*.githubusercontent.com"
+  - droidtop.github.io
+  - downloads.gamenative.app
+  - "*.steampowered.com"
+  - "*.steamstatic.com"
+  - steamcommunity.com
+  - "*.steamgriddb.com"
+  - "*.gog.com"
+  - "*.epicgames.com"
+  - "*.epicgamescdn.com"
+  - itch.io
+  - "*.itch.io"
+  - "*.itch.zone"
+  - lutris.net
+  - retroachievements.org
+  - "*.retroachievements.org"
+  - "*.amazon.com"
+  - "*.screenscraper.fr"
+  - screenscraper.fr
+  - "*.thegamesdb.net"
+  - "*.igdb.com"
+  - "*.twitch.tv"
+  - "*.protondb.com"
+  - howlongtobeat.com
+  - www.pcgamingwiki.com
+  - pixeldrain.com
+  - gofile.io
+  - "*.gofile.io"
+  - "*.mediafire.com"
+  - real-debrid.com
+  - "*.real-debrid.com"
+  - torbox.app
+  - "*.torbox.app"
+  - api.ipify.org          # the agent's public-address check
+  - shizuku.rikka.app
+  - play.google.com
+  - storage.googleapis.com
+  - gitlab.com
+  - www.python.org
+  - mamedev.org
+  - specs.openid.net
+  - code.google.com
+native_libs: []            # the lane lists them; until then each is a medium finding
+exported_ok: []
+dynamic:
+  monkey_events: 800

@@ -1,0 +1,33 @@
+# The standing gate before signing, in a repo's release workflow. The build
+# job uploads its artefacts unsigned; signing is a separate job that runs
+# only on a signable outcome, and signs what the review says to sign. (The
+# signing job itself is the coordinator's and is unchanged by the harness.)
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      # ... build, with no signing material in this job ...
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: {name: unsigned, path: out/}
+
+  review:
+    needs: build
+    uses: Droidtop/build-review/.github/workflows/review-release.yml@v1
+    with:
+      release: build-${{ github.run_number }}
+      source: artifact
+      artifact-name: unsigned
+      mode: gate
+      harness-ref: v1
+    secrets:
+      BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}   # never `secrets: inherit`
+
+  sign:
+    needs: review
+    if: needs.review.outputs.sign == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: {name: "${{ needs.review.outputs.sign-artifact }}", path: to-sign}
+      # ... the repo's existing signing and publishing steps, unchanged ...

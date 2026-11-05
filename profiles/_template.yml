@@ -1,0 +1,47 @@
+# A repo's review profile: its stated purpose, as rules a build is held to.
+# Copy to profiles/<owner>/<repo>.yml. Every entry carries its reason in a
+# comment; an entry with no reason is not a stated purpose. Anything not
+# listed is unexpected: a finding (high for high-risk permissions and APIs,
+# medium otherwise). The owning lane writes its repo's profile; a profile
+# change is reviewed like code, because it widens what a build may do.
+repo: Owner/repo
+purpose: >
+  One paragraph: what this build is for, in plain words.
+# Which release assets are reviewed, and what kind each is
+# (apk | plugin-bundle | engine-bundle | catalog | archive | native).
+artefacts:
+  - {pattern: "*.apk", kind: apk}
+# How to rebuild a release from its commit (step 3 of the loop). setup is
+# one of: repo-android-setup (the repo's own .github/actions/android-setup),
+# java-android, python, rust, none. command runs at the repo root with no
+# secrets of any kind; outputs are globs of what it builds.
+build:
+  setup: java-android
+  java: "17"
+  submodules: false
+  command: ./gradlew assembleRelease
+  outputs: ["app/build/outputs/apk/release/*.apk"]
+# Android permissions the purpose needs.
+permissions: []
+# droidtop host-API permissions (plugin bundles' manifest.json).
+plugin_permissions: []
+# Sensitive API categories the purpose needs: exec, dynamic-code,
+# native-load, reflection, sms, telephony-ids, accounts, clipboard-read,
+# device-admin, accessibility, package-install, webview-js-bridge, location,
+# camera, audio-record, contacts, screen-capture, su, trust-all-tls, and for
+# native code native-process, native-network, native-loading,
+# native-memory, native-injection, native-anti-analysis.
+api: []
+# Network endpoints (globs).
+hosts: []
+# Native libraries expected in the build (globs on the file name).
+native_libs: []
+# Components exported on purpose with no permission (class name or suffix).
+exported_ok: []
+obfuscation_ok: false        # true only for an R8/ProGuard-style rename the lane states
+cve_ignore: {}               # {CVE-id: reason}
+secrets_ignore: []           # gitleaks fingerprints, each with its reason in a comment
+block: []                    # rule ids that block for this repo even below high
+dynamic:
+  monkey_events: 600
+  # skip_reason: "only when a run can't apply (no runnable code)"

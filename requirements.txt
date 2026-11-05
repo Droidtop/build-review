@@ -1,0 +1,9 @@
+# The harness's Python analysers, pinned. scripts/install-tools.sh installs
+# these and the native analysers (gitleaks, syft, grype, osv-scanner, capa).
+androguard==4.1.4
+lief==0.16.6
+pyyaml==6.0.2
+apkid==3.2.0
+quark-engine==26.10.1
+semgrep==1.183.0
+pytest==8.3.5

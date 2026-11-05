@@ -1,0 +1,122 @@
+name: Build review batch
+
+# Works through an inventory issue's checklist (the forced audit after a key
+# revocation, Droidtop/tracker#550): reviews each selected release through
+# review-release.yml, ticks its line with the outcome and a link to its
+# report, and publishes the results file that goes out with the catalog
+# beside the revocation list.
+#
+# Only ever started by hand. Nothing runs on a schedule or on push: which
+# releases to review, and when, is the coordinator's call (owner,
+# 2026-11-04: no initial review pass is being run yet).
+
+on:
+  workflow_dispatch:
+    inputs:
+      inventory:
+        description: The inventory issue, owner/repo#number
+        default: Droidtop/tracker#876
+      repos:
+        description: Repos to take, comma-separated globs (e.g. Droidtop/droidtop-plugin-syncthing)
+        required: true
+      tags:
+        description: Tags to take, comma-separated globs
+        default: "*"
+      limit:
+        description: At most this many releases this run (GitHub runs at most 256)
+        default: "1"
+      redo:
+        description: Review lines that are already ticked again
+        type: boolean
+        default: false
+      dry-run:
+        description: Review, but don't tick the inventory, file issues or publish results
+        type: boolean
+        default: true
+      event:
+        description: What the results are for, e.g. "key chain exposure 2026-11-04"
+        default: key chain exposure 2026-11-04
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: build-review-batch
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: {python-version: "3.12"}
+      - run: python -m pip install -q pyyaml==6.0.2
+      - id: plan
+        env:
+          BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}
+        run: |
+          python -m review batch-plan --inventory "${{ inputs.inventory }}" --repos "${{ inputs.repos }}" \
+            --tags "${{ inputs.tags }}" --limit "${{ inputs.limit }}" ${{ inputs.redo && '--redo' || '' }}
+
+  review:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    uses: ./.github/workflows/review-release.yml
+    with:
+      repo: ${{ matrix.repo }}
+      release: ${{ matrix.tag }}
+      source: release
+      mode: audit
+      file-issues: ${{ !inputs.dry-run }}
+      harness-ref: ${{ github.sha }}
+    secrets:
+      BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}
+
+  tick:
+    needs: [plan, review]
+    if: always() && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # the results release in this repo; nothing else
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with: {python-version: "3.12"}
+      - run: python -m pip install -q pyyaml==6.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: {pattern: "review-decision-*", path: results}
+      - name: Tick the inventory
+        env:
+          BUILD_REVIEW_TOKEN: ${{ secrets.BUILD_REVIEW_TOKEN }}
+        run: |
+          python -m review batch-tick --inventory "${{ inputs.inventory }}" --results results ${{ inputs.dry-run && '--dry-run' || '' }}
+      - name: Results file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download audit-results -R "$GITHUB_REPOSITORY" -p build-review-results.json -D prev 2>/dev/null || true
+          python -m review publish --results results --out out/build-review-results.json \
+            --event "${{ inputs.event }}" --merge prev/build-review-results.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: {name: build-review-results, path: out, retention-days: 400}
+      - name: Publish the results (the coordinator ships them with the catalog)
+        if: ${{ !inputs.dry-run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view audit-results -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create audit-results -R "$GITHUB_REPOSITORY" --title "Build review results" \
+              --notes "Every release's build review outcome (Droidtop/tracker#550). The coordinator publishes build-review-results.json with the catalog, beside the revocation list."
+          gh release upload audit-results out/build-review-results.json -R "$GITHUB_REPOSITORY" --clobber

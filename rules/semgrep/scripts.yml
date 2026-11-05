@@ -1,0 +1,97 @@
+# Rules for script payloads in engine and plugin bundles (Python, Ren'Py,
+# JavaScript, Lua, GDScript, shell). Each says why it matters; severity in
+# metadata is what the finding gets.
+rules:
+  - id: py-exec-of-decoded
+    languages: [python]
+    severity: ERROR
+    metadata: {severity: critical, category: malicious}
+    message: Executes code decoded at run time (base64, zlib, marshal), the usual shape of a hidden payload.
+    pattern-either:
+      - pattern: exec(base64.$F(...))
+      - pattern: eval(base64.$F(...))
+      - pattern: exec(zlib.decompress(...))
+      - pattern: exec(marshal.loads(...))
+      - pattern: exec(codecs.decode(...))
+  - id: py-download-and-exec
+    languages: [python]
+    severity: ERROR
+    metadata: {severity: critical, category: malicious}
+    message: Downloads code and runs it.
+    patterns:
+      - pattern-either:
+          - pattern: exec($X.read(), ...)
+          - pattern: exec(requests.get(...).text, ...)
+          - pattern: exec(urllib.request.urlopen(...).read(), ...)
+  - id: py-shell-true
+    languages: [python]
+    severity: WARNING
+    metadata: {severity: medium, category: process}
+    message: Runs a shell command line; check what reaches it.
+    pattern-either:
+      - pattern: subprocess.$F(..., shell=True, ...)
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+  - id: py-pickle-load
+    languages: [python]
+    severity: WARNING
+    metadata: {severity: medium, category: vulnerability}
+    message: Unpickles data, which runs code if the data is not ours.
+    pattern-either:
+      - pattern: pickle.loads(...)
+      - pattern: pickle.load(...)
+  - id: py-tls-verify-off
+    languages: [python]
+    severity: ERROR
+    metadata: {severity: high, category: vulnerability}
+    message: Turns off TLS certificate checks.
+    pattern-either:
+      - pattern: requests.$F(..., verify=False, ...)
+      - pattern: ssl._create_unverified_context(...)
+  - id: js-eval-of-decoded
+    languages: [javascript]
+    severity: ERROR
+    metadata: {severity: critical, category: malicious}
+    message: Evaluates code decoded at run time.
+    pattern-either:
+      - pattern: eval(atob(...))
+      - pattern: new Function(atob(...))
+      - pattern: eval(Buffer.from(..., "base64").toString())
+  - id: js-child-process
+    languages: [javascript]
+    severity: WARNING
+    metadata: {severity: high, category: process}
+    message: Starts a process from a game or plugin script (NW.js and Electron games can).
+    pattern-either:
+      - pattern: require("child_process")
+      - pattern: require('child_process')
+  - id: js-remote-script
+    languages: [javascript]
+    severity: WARNING
+    metadata: {severity: medium, category: network}
+    message: Loads a script from the network at run time.
+    patterns:
+      - pattern: $S.src = "$URL"
+      - metavariable-regex: {metavariable: $URL, regex: '^https?://'}
+  - id: lua-os-execute
+    languages: [lua]
+    severity: WARNING
+    metadata: {severity: high, category: process}
+    message: Runs a shell command from Lua.
+    pattern-either:
+      - pattern: os.execute(...)
+      - pattern: io.popen(...)
+  - id: lua-loadstring-remote
+    languages: [lua]
+    severity: WARNING
+    metadata: {severity: medium, category: malicious}
+    message: Compiles a string into code at run time.
+    pattern-either:
+      - pattern: loadstring(...)
+      - pattern: load($X)
+  - id: sh-curl-pipe-shell
+    languages: [bash]
+    severity: ERROR
+    metadata: {severity: critical, category: malicious}
+    message: Downloads a script and pipes it into a shell.
+    pattern-regex: '(curl|wget)[^|\n]*\|\s*(ba|z)?sh'

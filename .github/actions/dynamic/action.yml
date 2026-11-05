@@ -1,0 +1,45 @@
+name: Dynamic run
+description: >
+  Installs each APK in a throwaway Android emulator (KVM), drives it with the
+  monkey, captures network, processes, files and log, and writes trace.json
+  per APK. The emulator is google_apis x86_64 (ARM translation included), so
+  arm64-only builds run too.
+inputs:
+  apks:
+    description: Space-separated APK paths.
+    required: true
+  out:
+    description: Output folder; one subfolder per APK.
+    required: true
+  harness-path:
+    default: harness
+  events:
+    default: "600"
+runs:
+  using: composite
+  steps:
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+    - name: Plan
+      id: plan
+      shell: bash
+      run: |
+        mkdir -p "${{ inputs.out }}"
+        # One emulator boot runs every APK of the release, one after another.
+        : > "${{ inputs.out }}/run-all.sh"
+        for apk in ${{ inputs.apks }}; do
+          name=$(basename "$apk" .apk)
+          echo "PCAP='${{ inputs.out }}/net.pcap' bash ${{ inputs.harness-path }}/scripts/dynamic-android.sh '$apk' '${{ inputs.out }}/$name' ${{ inputs.events }} || echo 'dynamic run failed for $name'" >> "${{ inputs.out }}/run-all.sh"
+        done
+    - uses: reactivecircus/android-emulator-runner@c9c93e6ba9c4194322e114c40970d5983d9a07cc # v2.38.0
+      with:
+        api-level: 34
+        target: google_apis
+        arch: x86_64
+        force-avd-creation: true
+        disable-animations: true
+        emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -tcpdump ${{ inputs.out }}/net.pcap
+        script: bash ${{ inputs.out }}/run-all.sh
