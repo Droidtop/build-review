@@ -1,0 +1,49 @@
+# proton-wine-tux's review profile. DRAFT by the harness lane (2026-11-05), read from
+# proton-11.0-2-20261009's proton-11.0-2-x86_64.wcp and build-proton.yml. The Windows
+# runtime lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/proton-wine-tux
+purpose: >
+  droidtop's own Proton/Wine builds for its Windows runtime, packed as .wcp components
+  (droidtop-components' feeds list any Droidtop repository named for Wine or Proton).
+artefacts:
+  - {pattern: "*.wcp", kind: archive}
+  - {pattern: "*.wcp.xz", kind: archive}
+build:
+  setup: act
+  workflow: .github/workflows/build-proton.yml
+  job: build
+  outputs:
+    "**/proton-*.wcp": null
+    "**/proton-wine-*.wcp.xz": null
+native_libs:
+  "*": "Wine and Proton are native code throughout (1,583 files in proton-11.0-2-x86_64.wcp)"
+api:
+  native-process: "Wine starts processes"
+  native-network: "Wine's networking"
+  native-loading: "Wine loads its DLLs"
+  native-memory: "Wine maps code"
+  native-injection: "Wine's own process and memory APIs (WriteProcessMemory, CreateRemoteThread are part of the Win32 API it implements)"
+  native-keylogging: "Wine implements SetWindowsHookEx and GetAsyncKeyState as part of user32"
+  native-anti-analysis: "Wine implements IsDebuggerPresent"
+hosts:
+  www.winehq.org: "Wine's own strings"
+  source.winehq.org: "Wine's own strings"
+  schemas.microsoft.com: "Windows schema namespaces"
+  schemas.xmlsoap.org: "SOAP namespaces"
+  www.w3.org: "XML namespaces"
+  docs.oasis-open.org: "XML namespaces"
+  www.oasis-open.org: "XML namespaces"
+  relaxng.org: "libxml2's own strings"
+  xmlsoft.org: "libxml2's own strings"
+  exslt.org: "libxslt's own strings"
+  www.jclark.com: "Expat's own strings"
+  icl.com: "libxml2 strings"
+  logo.verisign.com: "Crypto test-certificate strings"
+  support.amd.com: "Driver strings (amdxc64)"
+  www.google.com: "TO IDENTIFY: in a Wine component's strings; Windows runtime lane to say which"
+  android.googlesource.com: "Android NDK strings"
+# capa's "check if process is running under wine" and "persistence via
+# registry" on Wine's own DLLs are left for the Windows runtime lane to
+# explain with a source.
+dynamic:
+  skip_reason: "Components run inside droidtop's Windows runtime, not as an app."

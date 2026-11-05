@@ -1,0 +1,49 @@
+# windowcast's review profile. DRAFT by the harness lane (2026-11-05), read from
+# v0.37.0's assets and the repo's workflows (android.yml, linux-packages.yml).
+# The Platforms lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/windowcast
+purpose: >
+  The separate streaming project: a host agent and app on Linux (and Windows) that streams a window or
+  desktop to a viewer, and the Android library droidtop embeds to play a paired computer's game
+  (droidtop AGENTS.md: "never put remote-streaming code in droidtop (that is the separate windowcast project)").
+artefacts:
+  - {pattern: "windowcast-*.rpm", kind: archive}
+  - {pattern: "windowcast-linux-*.tar.zst", kind: archive}
+  - {pattern: "windowcast-android-*.aar", kind: archive}
+  - {pattern: "*.run", kind: archive}
+  - {pattern: "install.sh", kind: archive}
+  - {pattern: "uninstall.sh", kind: archive}
+build:
+  # Its own unsigned jobs, replayed at the release's commit. The viewer APK's
+  # job (viewer-release.yml) signs, so it is not replayed.
+  setup: act
+  workflow: .github/workflows/linux-packages.yml
+  job: packages
+  outputs:
+    "**/windowcast-*.rpm": null
+    "**/windowcast-linux-*.tar.zst": null
+native_libs:
+  libwindowcast_client.so: "The Android library's client (droidtop embeds it)"
+  libwindowcast_jni.so: "Its JNI"
+  windowcast-agent-linux: "The Linux host agent"
+  windowcast-app: "The host app"
+  windowcast-client: "The desktop client"
+  windowcast-testhost: "TO IDENTIFY: shipped in the Linux package; Platforms lane to say why a test host is in a release"
+api:
+  native-network: "Streaming: sockets, WebRTC"
+  native-process: "The agent starts the app and the session"
+  native-loading: "Codecs and the compositor"
+  native-memory: "Codecs"
+hosts:
+  github.com: "Releases and the installer's downloads"
+  www.webrtc.org: "WebRTC's own strings"
+  docs.rs: "Rust crates' own strings"
+  www.ietf.org: "Protocol references in strings"
+  blog.demofox.org: "A library's own strings"
+  www.shadertoy.com: "A shader's attribution"
+  android.googlesource.com: "Android NDK strings"
+  discovery-announce-v4.syncthing.net: "TO IDENTIFY: Syncthing's global discovery servers are compiled in; Platforms lane to say whether windowcast contacts them"
+  discovery-announce-v6.syncthing.net: "TO IDENTIFY: as above"
+  discovery-lookup.syncthing.net: "TO IDENTIFY: as above"
+dynamic:
+  skip_reason: "Desktop packages and an Android library: there is no app to install in the emulator. The viewer APK is a separate signed release."

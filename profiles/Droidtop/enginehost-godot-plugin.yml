@@ -1,5 +1,6 @@
 # The godot core's review profile. DRAFT by the harness lane (2026-11-05), read from
-# godot-v46-v1-build.226 (dev.enginehost.godot.v46.v1.enginehost.tar.xz) and the core at 658dafcbd0. The Enginehost
+# godot-v46-v1-build.226 (dev.enginehost.godot.v46.v1.enginehost.tar.xz; a draft release) and the core at 658dafcbd0.
+# Facts below from the newest published release, godot-v47-v1-unstable. The Enginehost
 # cores lane confirms it on Droidtop/tracker#550.
 repo: Droidtop/enginehost-godot-plugin
 extends: _kinds/enginehost-core
@@ -9,3 +10,11 @@ purpose: >
 build:
   workflow: .github/workflows/enginehost-android.yml   # the core's own build job (it uploads build/unsigned.tar)
   job: bundle
+api:
+  clipboard-read: "Observed in the bundle's dex (godot-v47-v1-unstable): Godot's clipboard API (DisplayServer.clipboard_get). Cores lane to confirm"
+  exec: "Observed in the bundle's dex: Godot's OS.execute. Cores lane to say whether a core needs it under lockdown"
+native_libs:   # observed in godot-v47-v1-unstable
+  libgodot_android.so: "The Godot engine"
+  libc++_shared.so: "C++ runtime"
+hosts:   # Godot's own strings: credits, docs and sample links; cores lane to confirm none is contacted
+  godotengine.org: "Godot's own strings"

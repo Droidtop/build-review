@@ -1,0 +1,67 @@
+# droidtop-agent's review profile. DRAFT by the harness lane (2026-11-05), read from
+# build-188's assets and ci.yml. The agent lane confirms it on Droidtop/tracker#550.
+repo: Droidtop/droidtop-agent
+purpose: >
+  The companion agent for a paired computer (Linux, macOS, Windows): it lists the computer's games
+  for droidtop, syncs saves, and hosts streaming through windowcast (Droidtop/tracker#860).
+artefacts:
+  - {pattern: "droidtop-agent-*.rpm", kind: archive}
+  - {pattern: "droidtop-agent-*.tar.zst", kind: archive}
+  - {pattern: "droidtop-agent-*.run", kind: archive}
+  - {pattern: "droidtop-agent-app-windows-*.exe", kind: native}
+  - {pattern: "droidtop-agent-app-macos-*", kind: native}
+  - {pattern: "droidtop-agent-app-linux-*", kind: native}
+  - {pattern: "droidtop-agent-linux-*", kind: native}
+build:
+  # Its own unsigned packaging job, replayed at the release's commit. act runs
+  # Linux jobs only, so the macOS and Windows binaries can't be rebuilt here;
+  # a finding on those alone stays "not rebuildable".
+  setup: act
+  workflow: .github/workflows/ci.yml
+  job: linux-packages
+  outputs:
+    "**/droidtop-agent-*.rpm": null
+    "**/droidtop-agent-linux-*.tar.zst": null
+native_libs:
+  droidtop-agent: "The agent"
+  droidtop-agent-app: "The agent's desktop app"
+  "droidtop-agent-app-*": "The app, per platform"
+  "droidtop-agent-linux-*": "The agent, per architecture"
+api:
+  native-network: "Pairing, the library and save sync, streaming"
+  native-process: "Launches the computer's games"
+  native-loading: "Platform libraries"
+  native-keylogging: "TO IDENTIFY: the Windows app imports a keyboard-hook or key-state API; agent lane to say what for (likely streaming input)"
+hosts:
+  github.com: "Releases"
+  raw.githubusercontent.com: "Engine and detection data"
+  # Engine detection strings (game-engine documentation sites) are in the
+  # binary's detection rules, not contacted.
+  love2d.org: "Engine detection rules' strings"
+  tyranoscript.com: "Engine detection rules' strings"
+  www.construct.net: "Engine detection rules' strings"
+  www.electronjs.org: "Engine detection rules' strings"
+  nwjs.readthedocs.io: "Engine detection rules' strings"
+  docs.monogame.net: "Engine detection rules' strings"
+  fna-xna.github.io: "Engine detection rules' strings"
+  docs.torque3d.org: "Engine detection rules' strings"
+  developer.valvesoftware.com: "Engine detection rules' strings"
+  asset.visualnovelmaker.com: "Engine detection rules' strings"
+  morkt.github.io: "Engine detection rules' strings (GARbro)"
+  opentomb.github.io: "Engine detection rules' strings"
+  tcrf.net: "Engine detection rules' strings"
+  www.ufopaedia.org: "Engine detection rules' strings"
+  dbus.freedesktop.org: "D-Bus' own strings"
+  www.freedesktop.org: "freedesktop strings"
+  www.apple.com: "macOS plist strings"
+  ns.adobe.com: "XMP strings"
+  docs.rs: "Rust crates' own strings"
+  www.ietf.org: "Protocol references"
+  www.webrtc.org: "windowcast's WebRTC strings"
+  blog.demofox.org: "A library's own strings"
+  www.shadertoy.com: "A shader's attribution"
+  discovery-announce-v4.syncthing.net: "TO IDENTIFY: Syncthing's discovery servers compiled in (save sync); agent lane to say whether the agent contacts them"
+  discovery-announce-v6.syncthing.net: "TO IDENTIFY: as above"
+  discovery-lookup.syncthing.net: "TO IDENTIFY: as above"
+dynamic:
+  skip_reason: "Desktop programs: there is no Android app to run in the emulator."
