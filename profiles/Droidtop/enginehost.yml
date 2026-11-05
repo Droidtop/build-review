@@ -1,0 +1,75 @@
+# Enginehost's review profile. DRAFT by the harness lane (2026-11-05), read
+# from the merged manifest and lib/ of v0.1.5-dev.658 (enginehost-latest.apk,
+# sha256 e1df949a...) and Enginehost main a74d7e9, each reason citing its
+# source there. The Enginehost lane confirms or corrects every line on
+# Droidtop/tracker#550; until then the profile is a draft and its review
+# results are leads, not verdicts.
+repo: Droidtop/enginehost
+purpose: >
+  An Android app that runs game engines (Ren'Py, Godot, RPG Maker, KiriKiri,
+  ...) delivered as signed engine bundles, each from its own
+  Droidtop/enginehost-*-plugin repository. It is a complete app and a host
+  other apps drive over Intents. Engine code runs in its own process, without
+  internet access and without arbitrary file access (CLAUDE.md, "Engine
+  sandbox"; docs/engine-sandbox.md).
+artefacts:
+  - {pattern: "enginehost-latest-debug.apk", kind: apk, debug: true}   # build.yml: assembleDebug
+  - {pattern: "enginehost*.apk", kind: apk}
+build:
+  setup: java-android            # build.yml: "Set up JDK 17"
+  java: "17"
+  submodules: recursive          # build.yml: checkout with submodules
+  # No secrets: app/build.gradle.kts:32-55 only signs when ENGINEHOST_ANDROID_KEYSTORE
+  # is set, so the rebuild's release APK comes out unsigned.
+  command: ./gradlew :app:assembleRelease --stacktrace
+  outputs: ["app/build/outputs/apk/release/*.apk"]
+
+permissions:
+  android.permission.MANAGE_EXTERNAL_STORAGE: "Native interpreters operate on complete game directory trees in place (app manifest)"
+  android.permission.WRITE_EXTERNAL_STORAGE: "The same before API 30 (maxSdkVersion 29, app manifest)"
+  android.permission.INTERNET: "Self-update and bundle catalogs from GitHub; a game's translation through the person's own service (docs/text-services.md). Engine code itself has none (docs/engine-sandbox.md)"
+  android.permission.REQUEST_INSTALL_PACKAGES: "In-app self-update through a PackageInstaller session (app manifest, AppUpdate)"
+  android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION: "Skips the dialog only when Android judges Enginehost its own installer of record (app manifest)"
+  android.permission.WAKE_LOCK: "Keeps the screen on while a game runs (app manifest)"
+  android.permission.VIBRATE: "Bundled engines run in this app's process, so a core that rumbles the pad needs it declared here (app manifest, EasyRPG)"
+  dev.enginehost.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: "Added by AndroidX core for unexported dynamic receivers"
+
+exported_ok:
+  dev.enginehost.MainActivity: "The launcher entry (MAIN/LAUNCHER)"
+  dev.enginehost.LaunchEntryActivity: "dev.enginehost.LAUNCH is open to any app, by design (CLAUDE.md); END_GAME is answered only to droidtop (app manifest)"
+  dev.enginehost.EnginehostSettingsActivity: "CONFIGURE_SAVES and CONFIGURE_SETTINGS: every UI flow has a programmatic equivalent (CLAUDE.md, docs/contract.md)"
+  dev.enginehost.GameScanActivity: "dev.enginehost.SCAN, the same contract (docs/contract.md)"
+  dev.enginehost.ConfigEditorActivity: "dev.enginehost.CONFIGURE, the same contract (docs/contract.md)"
+  dev.enginehost.DroidtopInterfaceService: "droidtop's app_interface plugin binding (Droidtop/tracker#547); answers only droidtop's uid with a pinned signing certificate (DroidtopLink, app manifest)"
+  dev.enginehost.CapabilityProvider: "Read-only advisory view of installed, verified engine-bundle capabilities, no selection, fixed columns (CapabilityProvider.kt:15-29). TO IDENTIFY: Enginehost lane to confirm that insert, update and delete refuse"
+  androidx.profileinstaller.ProfileInstallReceiver: "AndroidX, behind DUMP"
+
+api:
+  dynamic-code: "Loads verified engine bundles' dex (PluginDexLoader, loadEnginePluginFromInMemoryDex; docs/engine-bundle-format.md)"
+  package-install: "In-app self-update (AppUpdate.commitSession)"
+  exec: "A problem report reads the app's own system log (ProblemReport.readSystemLog)"
+  native-load: "Its native libraries (native_libs)"
+  reflection: "AndroidX and Kotlin internals; cores on the activity transport are called by name (ActivityText, docs/text-services.md)"
+  native-process: "The sandbox's confined child start (libsbx_child.so)"
+  native-memory: "The runtime lockdown's system-call filter (libenginehost_sandbox.so, docs/engine-sandbox.md)"
+  native-anti-analysis: "The sandbox issues raw system calls on purpose (seccomp; APKiD and capa read that as anti-hooking)"
+
+native_libs:  # both ABIs, arm64-v8a and x86_64 (CLAUDE.md: every plugin ships both)
+  libenginehost_sandbox.so: "The :runtime process's network filter and lockdown (app/src/main/cpp, RuntimeSandbox, docs/engine-sandbox.md)"
+  libsbx_child.so: "Fibrewall's confined child start, linked by the sandbox (app/src/main/cpp/CMakeLists.txt: sbx)"
+  libonnxruntime.so: "sherpa-onnx's runtime: on-device voices, in the APK (owner, 2026-10-29; app/build.gradle.kts:140-153, pinned 1.13.8 with SHA-256)"
+  libsherpa-onnx-jni.so: "The same sherpa-onnx AAR's JNI"
+
+hosts:
+  github.com: "Releases: self-update and engine bundles"
+  api.github.com: "Release and catalog lookups"
+  raw.githubusercontent.com: "Catalog files"
+  "*.githubusercontent.com": "Release asset downloads"
+  love2d.org: "A link in the LÖVE core's text"
+  tukaani.org: "xz-java's own strings (bundle unpacking)"
+  commons.apache.org: "Apache Commons' own strings"
+  youtrack.jetbrains.com: "Kotlin's own strings"
+  # The translation service is whatever the person names (docs/text-services.md): not in the build.
+
+dynamic:
+  monkey_events: 600
