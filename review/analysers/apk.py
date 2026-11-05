@@ -83,7 +83,7 @@ API_SEVERITY = {"sms": "critical", "device-admin": "critical", "accessibility": 
                 "webview-js-bridge": "medium", "exec": "medium", "native-load": "low", "reflection": "info"}
 
 URL_RE = re.compile(r"\b(?:https?|wss?|ftp)://([A-Za-z0-9.-]+)(?::\d+)?[^\s\"'<>]*")
-IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+IP_PORT_RE = re.compile(r"(?:://(?P<ip>(?:\d{1,3}\.){3}\d{1,3})\b|\b(?P<ip2>(?:\d{1,3}\.){3}\d{1,3}):\d{2,5}\b)")
 SU_RE = re.compile(r"(^|/)(su|busybox|magisk)$|/system/xbin/su|/sbin/su")
 
 
@@ -232,11 +232,14 @@ def _androguard(apk_path: str, profile: Profile, facts: dict) -> list[Finding]:
     for s in strings:
         for m in URL_RE.finditer(s):
             hosts.setdefault(m.group(1).lower(), f"{name}:dex")
-        for ip in IP_RE.findall(s):
+        # An address counts only where it is used as one: after a scheme or
+        # before a port. A bare dotted string is as often an ASN.1 OID
+        # (2.5.29.15 in X.509 code, 1.2.2.1 in crypto tables) as an address.
+        for m in IP_PORT_RE.finditer(s):
+            ip = m.group("ip") or m.group("ip2")
             parts = [int(x) for x in ip.split(".")]
             if all(p <= 255 for p in parts) and parts[0] not in (0, 10, 127, 255) and not ip.startswith(("192.168.", "169.254.")):
-                if s.strip() == ip or "://" in s:
-                    hosts.setdefault(ip, f"{name}:dex")
+                hosts.setdefault(ip, f"{name}:dex")
     return out
 
 

@@ -360,3 +360,12 @@ def test_facts_only_review_skips_the_judging_analysers(tmp_path, monkeypatch):
     rec = static.review_release([art], _profile(plugin_permissions=["library.read"]), repo="T/r", release="prev",
                                 facts_only=True)
     assert called == [] and rec["facts"]["pluginPermissions"] == ["library.read"]
+
+
+def test_ip_addresses_need_a_scheme_or_port_not_oids():
+    from review.analysers.apk import IP_PORT_RE
+    def ips(s):
+        return [m.group("ip") or m.group("ip2") for m in IP_PORT_RE.finditer(s)]
+    assert ips("2.5.29.15") == [] and ips("1.2.2.1") == []
+    assert ips("http://203.0.113.9/x") == ["203.0.113.9"]
+    assert ips("connect 198.51.100.4:4444") == ["198.51.100.4"]
