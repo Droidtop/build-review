@@ -73,7 +73,7 @@ API_CATEGORIES = {
     "audio-record": [("Landroid/media/AudioRecord;", "<init>"), ("Landroid/media/MediaRecorder;", "setAudioSource")],
     "contacts": [("Landroid/provider/ContactsContract", None)],
     "screen-capture": [("Landroid/media/projection/MediaProjectionManager;", None)],
-    "su": [],  # from strings, below
+    "su": [],  # from strings code uses, below
     "trust-all-tls": [],  # from code shape, below
 }
 API_SEVERITY = {"sms": "critical", "device-admin": "critical", "accessibility": "high", "telephony-ids": "high",
@@ -222,9 +222,18 @@ def _dex(dx, profile: Profile, facts: dict, name: str) -> list[Finding]:
                 if callers:
                     used.setdefault(cat, []).extend(callers)
 
-    strings = [s.get_value() for s in dx.get_strings()]
-    if any(SU_RE.search(s) for s in strings):
-        used.setdefault("su", []).append(next(s for s in strings if SU_RE.search(s)))
+    # A su path counts where code uses it, under the same caller rule as the
+    # API categories, so api_callers_ok names su's callers like any other's.
+    # A bare string anywhere did not: 2974's debug APK tripped on media3's
+    # CMCD key "su" (startup) and on a debug-info name with no code use, while
+    # droidtop's container script ("exec su -s ...") never matched at all
+    # (Droidtop/tracker#901).
+    for sa in dx.get_strings():
+        if SU_RE.search(sa.get_value()):
+            callers = [f"{c.name}->{m.name}" for c, m in sa.get_xref_from()]
+            callers = [c for c in callers if not c.startswith(("Landroidx/", "Lkotlin/", "Landroid/"))]
+            if callers:
+                used.setdefault("su", []).extend(callers)
 
     # TrustManagers whose checkServerTrusted does nothing: a known MITM hole.
     for cls in dx.get_classes():

@@ -55,7 +55,8 @@ rule and a location glob, and must give its reason and the tracker comment
 the owning lane gave it in. The finding then drops to info, but stays in
 the report marked "Explained: <reason> (<source>)", so an explanation is
 never invisible. Profiles can also allow one category for named callers only
-(`api_callers_ok`), leaving it a finding for every other caller.
+(`api_callers_ok`), leaving it a finding for every other caller. A su path
+string counts the same way: where code uses it, by caller.
 
 "Same findings" means the same fingerprint. A fingerprint is the analyser,
 the rule and the location, with versions, build numbers and hashes taken

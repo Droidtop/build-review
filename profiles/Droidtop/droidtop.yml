@@ -186,6 +186,7 @@ api_callers_ok:
   trust-all-tls:
     "Lio/github/muntashirakon/adb/SslUtils$2;": "TLS to the device's own adbd for wireless debugging, only ever 127.0.0.1 (WirelessDebuggingOps.kt:229); adbd's self-signed certificate is authenticated by the SPAKE2 pairing"
     "Lorg/eclipse/jgit/transport/http/NoCheckX509TrustManager;": "Only takes effect when a repository sets http.sslVerify false; droidtop's only jgit use (ThemeDownloader, https) never does"
+    "Lorg/bouncycastle/est/jcajce/JcaJceUtils$1;": "BouncyCastle's EST client, bundled in bcpkix, which droidtop uses only for its adb key's certificate (WirelessDebuggingOps); nothing imports org.bouncycastle.est, and R8 removes every EST class from the release APK (0 references in 2974's droidtop.apk, 52 in the unshrunk debug APK; https://github.com/Droidtop/tracker/issues/901#issuecomment-6656510783)"
 
 # Findings the droidtop lane explained, each with its reason and source.
 # They stay in the report as info, marked "Explained".
@@ -198,6 +199,10 @@ explained:
     location: "droidtop*.apk"
     reason: "AGP's release resource-path shortening (res/-1.xml, res/-A.png; 1,801 entries in 2898), not a manipulation"
     source: "https://github.com/Droidtop/tracker/issues/550#issuecomment-6647163484"
+  - rule: apkid.manipulator
+    location: "assets/provider-host.apk"
+    reason: "The same AGP release resource-path shortening in :provider-host's release build (app/build.gradle.kts:340-359): 31 of its 43 res/ entries in 2974 (res/2K.9.png, res/4B.xml)"
+    source: "https://github.com/Droidtop/tracker/issues/901#issuecomment-6656510783"
   - rule: endpoint.not-in-purpose
     location: "1.2.2.1"
     reason: "Not an address: an ASN.1 OID in crypto tables (classes6.dex, libwindowcast_client.so) and part of a Go closure name in libcrane.so"
