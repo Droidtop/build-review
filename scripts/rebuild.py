@@ -98,7 +98,26 @@ def run_act(src: Path, build: dict, env: dict) -> Path:
     cmd = [act, build.get("event", "workflow_dispatch"), "-j", job, "-W", wf,
            "-P", "ubuntu-latest=-self-hosted", "-P", "ubuntu-24.04=-self-hosted", "-P", "ubuntu-22.04=-self-hosted",
            "--artifact-server-path", str(art), "--no-cache-server"]
-    r = subprocess.run(cmd, cwd=src, env=env)
+    # The one credential a rebuild gets: the rebuild job's own GITHUB_TOKEN
+    # (contents: read, expiring with the job), as the replayed job's
+    # github.token. A job that checks out another repository cannot start
+    # without one (droidtop plugins check out droidtop: "Input required and
+    # not supplied: token", build review batch 42120200445). Owner,
+    # 2026-11-05, Droidtop/tracker#913: "Yes". It goes in through a secret
+    # file, not the command line, and never into the build's environment,
+    # which clean_env() has already stripped of it.
+    secrets = None
+    token = os.environ.get("REBUILD_READ_TOKEN", "")
+    if token:
+        secrets = Path(tempfile.mkdtemp(prefix="act-secrets-")) / "secrets"
+        secrets.touch(mode=0o600)
+        secrets.write_text(f"GITHUB_TOKEN={token}\n")
+        cmd += ["--secret-file", str(secrets)]
+    try:
+        r = subprocess.run(cmd, cwd=src, env=env)
+    finally:
+        if secrets:
+            shutil.rmtree(secrets.parent, ignore_errors=True)
     unpacked = art / "unpacked"
     for z in art.rglob("*.zip"):
         with zipfile.ZipFile(z) as zf:

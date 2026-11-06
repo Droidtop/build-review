@@ -603,3 +603,43 @@ def test_su_counts_by_caller_and_dex_strings_still_give_hosts():
     assert [f.rule for f in out] == ["api.not-in-purpose.su"]
     p.api_callers_ok = {"su": {"Lcom/x/Root;": "test"}}
     assert _dex(_Dx([_Str("/system/xbin/su", ["Lcom/x/Root;"])]), p, {}, "a.apk") == []
+
+
+def test_act_replay_gets_the_read_token_by_secret_file_only(tmp_path, monkeypatch):
+    import importlib.util
+    import stat
+    spec = importlib.util.spec_from_file_location("rebuild", Path(__file__).resolve().parent.parent / "scripts" / "rebuild.py")
+    rebuild = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rebuild)
+
+    src = tmp_path / "src"
+    (src / ".github/workflows").mkdir(parents=True)
+    (src / ".github/workflows/b.yml").write_text("on: workflow_dispatch\n")
+    seen = {}
+
+    class Done:
+        returncode = 0
+
+    def fake_run(cmd, cwd=None, env=None):
+        seen["cmd"], seen["env"] = cmd, env
+        if "--secret-file" in cmd:
+            f = Path(cmd[cmd.index("--secret-file") + 1])
+            seen["file"], seen["text"] = f, f.read_text()
+            seen["mode"] = stat.S_IMODE(f.stat().st_mode)
+        return Done()
+
+    monkeypatch.setattr(rebuild.shutil, "which", lambda _: "/usr/bin/act")
+    monkeypatch.setattr(rebuild.subprocess, "run", fake_run)
+    monkeypatch.setenv("REBUILD_READ_TOKEN", "ghs_example")
+    rebuild.ORIGINALS[:] = []
+    rebuild.run_act(src, {"workflow": ".github/workflows/b.yml", "job": "bundle"}, rebuild.clean_env())
+
+    assert seen["text"] == "GITHUB_TOKEN=ghs_example\n" and seen["mode"] == 0o600
+    assert "REBUILD_READ_TOKEN" not in seen["env"]
+    assert not any("ghs_example" in a for a in seen["cmd"])
+    assert not seen["file"].exists()
+
+    monkeypatch.delenv("REBUILD_READ_TOKEN")
+    seen.clear()
+    rebuild.run_act(src, {"workflow": ".github/workflows/b.yml", "job": "bundle"}, rebuild.clean_env())
+    assert "--secret-file" not in seen["cmd"]

@@ -152,6 +152,18 @@ two ways to build:
   emulator of our own (owner, 2026-11-05: "reuse and repurpose existing code
   whenever possible"). Only the build job runs, never the signing one.
 
+**The one credential a rebuild gets.** An act replay receives the rebuild
+job's own `GITHUB_TOKEN` as the replayed job's `github.token`: `contents:
+read`, expiring with the job, the same token the repo's own build job has. A
+job that checks out another repository cannot start without one: the shared
+droidtop plugin workflow checks out droidtop first, and stopped with "Input
+required and not supplied: token". The owner allowed it on 2026-11-05
+(Droidtop/tracker#913: "Yes"). It goes to act through a secret file
+that is deleted afterwards, never into the build's environment, and command
+builds get nothing. No signing key, store or release token, or anything that
+can write ever reaches a rebuild, and every other credential-shaped variable
+is still removed.
+
 The outputs get the names the release published (profile `outputs`: a glob
 to a name, or `"{kind}"`), so the rebuild's findings sit at the same paths
 as the original's and their fingerprints compare. A core's unsigned payload

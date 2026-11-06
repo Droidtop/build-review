@@ -293,6 +293,10 @@ jobs:
         # scripts/rebuild.py runs the build with every credential-shaped
         # variable removed, so a rebuild is unsigned by construction (README,
         # "Rebuilds"), and names the outputs as the release published them.
+        # The job's own read-only token reaches only an act replay, as its
+        # github.token (owner, 2026-11-05, Droidtop/tracker#913).
+        env:
+          REBUILD_READ_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ steps.src.outcome }}" != success ]; then
             echo "error=the source at ${{ needs.static.outputs.commit }} could not be checked out" >> "$GITHUB_OUTPUT"; exit 0
